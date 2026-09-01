@@ -8,6 +8,7 @@ extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
 extern uint16_t getPaddleColor(int playerIndex);
+extern void drawGameBorder(Adafruit_GFX& display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
 extern const uint8_t GAME_DPAD_UP;
@@ -34,6 +35,27 @@ namespace Snake {
   uint32_t lastSpeedChangeTime = 0;
   uint32_t lastMoveTime = 0;
   int moveDelay = 100;  // milliseconds
+
+  void drawCell(int cellX, int cellY, int inset, uint16_t color) {
+    tft.fillRect(cellX * GRID_SIZE + inset, cellY * GRID_SIZE + inset,
+                 GRID_SIZE - inset * 2, GRID_SIZE - inset * 2, color);
+  }
+
+  void drawHud() {
+    tft.fillRect(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, 18, ST77XX_BLACK);
+    tft.drawLine(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, SCREEN_HEIGHT - 18, ST77XX_WHITE);
+    tft.setCursor(5, SCREEN_HEIGHT - 15);
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setTextSize(1);
+    tft.print("Score:");
+    tft.print(score);
+    tft.setCursor(SCREEN_WIDTH - 45, SCREEN_HEIGHT - 15);
+    tft.print("S:");
+    if (speedMultiplier < 1.0f) tft.setTextColor(ST77XX_CYAN);
+    else if (speedMultiplier > 1.0f) tft.setTextColor(ST77XX_RED);
+    else tft.setTextColor(ST77XX_WHITE);
+    tft.print(speedMultiplier, 1);
+  }
 
   void spawnFood() {
     do {
@@ -73,7 +95,13 @@ void Snake_init(ControllerPtr myControllers[]) {
   Snake::spawnFood();
 
   tft.fillScreen(ST77XX_BLACK);
-  tft.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT - 18, ST77XX_WHITE);
+  drawGameBorder(tft);
+  for (int i = 0; i < Snake::length; i++) {
+    Snake::drawCell(Snake::bodyX[i], Snake::bodyY[i], 1,
+                    i == 0 ? getPaddleColor(0) : ST77XX_GREEN);
+  }
+  Snake::drawCell(Snake::foodX, Snake::foodY, 2, ST77XX_RED);
+  Snake::drawHud();
 }
 
 bool Snake_update(ControllerPtr myControllers[]) {
@@ -113,10 +141,12 @@ bool Snake_update(ControllerPtr myControllers[]) {
       if (btns & 0x04) {  // L1 button
         Snake::speedMultiplier = max(0.3f, Snake::speedMultiplier - 0.1f);
         Snake::lastSpeedChangeTime = now;
+        Snake::drawHud();
       }
       if (btns & 0x08) {  // R1 button
         Snake::speedMultiplier = min(2.0f, Snake::speedMultiplier + 0.1f);
         Snake::lastSpeedChangeTime = now;
+        Snake::drawHud();
       }
     }
   }
@@ -127,6 +157,8 @@ bool Snake_update(ControllerPtr myControllers[]) {
 
   if (now - Snake::lastMoveTime > currentDelay) {
     Snake::lastMoveTime = now;
+    int tailX = Snake::bodyX[Snake::length - 1];
+    int tailY = Snake::bodyY[Snake::length - 1];
 
     // Prevent 180-degree turns
     if (!(Snake::dirX != 0 && Snake::nextDirX != 0 && (Snake::dirX + Snake::nextDirX == 0))) {
@@ -153,6 +185,8 @@ bool Snake_update(ControllerPtr myControllers[]) {
       return false;  // Game over
     }
 
+    bool ateFood = Snake::headX == Snake::foodX && Snake::headY == Snake::foodY;
+
     // Shift body
     for (int i = Snake::length - 1; i > 0; i--) {
       Snake::bodyX[i] = Snake::bodyX[i - 1];
@@ -162,56 +196,25 @@ bool Snake_update(ControllerPtr myControllers[]) {
     Snake::bodyY[0] = Snake::headY;
 
     // Food collision
-    if (Snake::headX == Snake::foodX && Snake::headY == Snake::foodY) {
-      Snake::length++;
+    if (ateFood) {
+      if (Snake::length < Snake::MAX_LENGTH) {
+        Snake::bodyX[Snake::length] = tailX;
+        Snake::bodyY[Snake::length] = tailY;
+        Snake::length++;
+      }
       Snake::score += 10;
       playScoreSound();
       Snake::spawnFood();
     }
+
+    if (!ateFood) Snake::drawCell(tailX, tailY, 1, ST77XX_BLACK);
+    Snake::drawCell(Snake::bodyX[0], Snake::bodyY[0], 1, getPaddleColor(0));
+    if (Snake::length > 1) Snake::drawCell(Snake::bodyX[1], Snake::bodyY[1], 1, ST77XX_GREEN);
+    if (ateFood) {
+      Snake::drawCell(Snake::foodX, Snake::foodY, 2, ST77XX_RED);
+      Snake::drawHud();
+    }
   }
-
-  // Render
-  tft.fillScreen(ST77XX_BLACK);
-  tft.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT - 18, ST77XX_WHITE);
-
-  // Draw snake
-  uint16_t headColor = getPaddleColor(0);
-  for (int i = 0; i < Snake::length; i++) {
-    uint16_t color = (i == 0) ? headColor : ST77XX_GREEN;
-    tft.fillRect(
-      Snake::bodyX[i] * Snake::GRID_SIZE + 1,
-      Snake::bodyY[i] * Snake::GRID_SIZE + 1,
-      Snake::GRID_SIZE - 2,
-      Snake::GRID_SIZE - 2,
-      color
-    );
-  }
-
-  // Draw food
-  tft.fillRect(
-    Snake::foodX * Snake::GRID_SIZE + 2,
-    Snake::foodY * Snake::GRID_SIZE + 2,
-    Snake::GRID_SIZE - 4,
-    Snake::GRID_SIZE - 4,
-    ST77XX_RED
-  );
-
-  // Display score and speed
-  tft.fillRect(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, 18, ST77XX_BLACK);
-  tft.drawLine(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, SCREEN_HEIGHT - 18, ST77XX_WHITE);
-
-  tft.setCursor(5, SCREEN_HEIGHT - 15);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setTextSize(1);
-  tft.print("Score:");
-  tft.print(Snake::score);
-
-  tft.setCursor(SCREEN_WIDTH - 45, SCREEN_HEIGHT - 15);
-  tft.print("S:");
-  if (Snake::speedMultiplier < 1.0f) tft.setTextColor(ST77XX_CYAN);
-  else if (Snake::speedMultiplier > 1.0f) tft.setTextColor(ST77XX_RED);
-  else tft.setTextColor(ST77XX_WHITE);
-  tft.print(Snake::speedMultiplier, 1);
 
   return true;
 }

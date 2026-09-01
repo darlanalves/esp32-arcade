@@ -4,10 +4,11 @@
 #include <SPI.h>
 #include <Bluepad32.h>
 
-// TFT Pin Definitions
-#define TFT_CS         15
-#define TFT_RST         4
-#define TFT_DC          2
+// TFT control pins avoid the ESP32 boot-strapping GPIOs (0, 2, 4, 5, 12, and 15).
+#define TFT_CS         32
+#define TFT_RST        27
+#define TFT_DC         25
+#define TFT_BLK_PIN    33
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 #define BUZZER_PIN 26
@@ -15,9 +16,23 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 // Screen Dimensions (Portrait 240x280 for ST7789V2)
 const int SCREEN_WIDTH = 240;
 const int SCREEN_HEIGHT = 280;
+const int PLAYFIELD_HEIGHT = SCREEN_HEIGHT - 18;
+const int PLAYFIELD_BORDER_WIDTH = 3;
 
 const uint8_t GAME_DPAD_UP = 0x01;
 const uint8_t GAME_DPAD_DOWN = 0x02;
+
+void drawGameBorder(Adafruit_GFX& display) {
+  for (int offset = 0; offset < PLAYFIELD_BORDER_WIDTH; offset++) {
+    display.drawRect(
+      offset,
+      offset,
+      SCREEN_WIDTH - offset * 2,
+      PLAYFIELD_HEIGHT - offset * 2,
+      ST77XX_WHITE
+    );
+  }
+}
 
 // Bluepad32 Global Controller Pointers (shared)
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
@@ -118,10 +133,8 @@ void drawMenu() {
 bool anyControllerButtonPressed() {
   for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
     if (myControllers[i] && myControllers[i]->isConnected()) {
-      // use buttons() if available; fallback to axis/trigger activity
-      if (myControllers[i]->buttons()) return true;
-      if (abs(myControllers[i]->axisX()) > 200) return true;
-      if (abs(myControllers[i]->axisY()) > 200) return true;
+      // Only the four face buttons start a game; the D-pad and sticks navigate.
+      if (myControllers[i]->buttons() & 0x0F) return true;
     }
   }
   return false;
@@ -129,8 +142,8 @@ bool anyControllerButtonPressed() {
 
 void setup() {
   Serial.begin(115200);
-  pinMode(25, OUTPUT);
-  digitalWrite(25, HIGH);
+  pinMode(TFT_BLK_PIN, OUTPUT);
+  digitalWrite(TFT_BLK_PIN, HIGH);
 
   // Initialize Display (ST7789V2 240x280)
   tft.init(240, 280);

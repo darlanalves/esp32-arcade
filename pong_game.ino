@@ -8,6 +8,7 @@ extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
 extern uint16_t getPaddleColor(int playerIndex);
+extern void drawGameBorder(Adafruit_GFX& display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
 extern const uint8_t GAME_DPAD_UP;
@@ -74,6 +75,7 @@ void Pong_init(ControllerPtr myControllers[]) {
 
   Pong::resetBall();
   Pong::drawScores();
+  drawGameBorder(tft);
 
   // draw initial paddles
   tft.fillRect(10, Pong::paddle1Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, getPaddleColor(0));

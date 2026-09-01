@@ -8,6 +8,7 @@ extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
 extern uint16_t getPaddleColor(int playerIndex);
+extern void drawGameBorder(Adafruit_GFX& display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
 extern const uint8_t GAME_DPAD_UP;
@@ -104,6 +105,7 @@ void Arkanoid_init(ControllerPtr myControllers[]) {
   Arkanoid::resetLevel();
 
   tft.fillScreen(ST77XX_BLACK);
+  drawGameBorder(tft);
   Arkanoid::drawBricks();
   tft.fillRect(Arkanoid::paddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(0));
   tft.fillRect(Arkanoid::paddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(1));
