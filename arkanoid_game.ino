@@ -1,9 +1,9 @@
 // Arkanoid (2-player variant) module
 #include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
+#include <Adafruit_ST7789.h>
 #include <Bluepad32.h>
 
-extern Adafruit_ST7735 tft;
+extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
@@ -41,12 +41,15 @@ namespace Arkanoid {
   int bricksRemaining = 0;
   int lastHitBy = -1; // 0 left, 1 right
 
+  float ballSpeedMultiplier = 1.0f;
+  uint32_t lastSpeedChangeTime = 0;
+
   uint16_t getBrickColor(uint8_t type) {
     switch(type) {
-      case 1: return ST7735_RED;     // Red = normal
-      case 2: return ST7735_YELLOW;  // Yellow = extra ball
-      case 3: return ST7735_CYAN;    // Cyan = extra life
-      default: return ST7735_BLACK;
+      case 1: return ST77XX_RED;     // Red = normal
+      case 2: return ST77XX_YELLOW;  // Yellow = extra ball
+      case 3: return ST77XX_CYAN;    // Cyan = extra life
+      default: return ST77XX_BLACK;
     }
   }
 
@@ -76,7 +79,7 @@ namespace Arkanoid {
         if (bricks[r][c]) {
           tft.fillRect(x, y, brickW-2, brickH, getBrickColor(bricks[r][c]));
         } else {
-          tft.fillRect(x, y, brickW-2, brickH, ST7735_BLACK);
+          tft.fillRect(x, y, brickW-2, brickH, ST77XX_BLACK);
         }
       }
     }
@@ -100,7 +103,7 @@ void Arkanoid_init(ControllerPtr myControllers[]) {
   Arkanoid::brickW = (SCREEN_WIDTH - 20) / Arkanoid::BRICK_COLS;
   Arkanoid::resetLevel();
 
-  tft.fillScreen(ST7735_BLACK);
+  tft.fillScreen(ST77XX_BLACK);
   Arkanoid::drawBricks();
   tft.fillRect(Arkanoid::paddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(0));
   tft.fillRect(Arkanoid::paddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(1));
@@ -120,16 +123,44 @@ bool Arkanoid_update(ControllerPtr myControllers[]) {
     int axis = myControllers[0]->axisX();
     if (axis < -200) { if (Arkanoid::paddle1X > 0) Arkanoid::paddle1X -= Arkanoid::PADDLE_SPEED; }
     if (axis > 200) { if (Arkanoid::paddle1X < SCREEN_WIDTH / 2 - Arkanoid::PADDLE_WIDTH) Arkanoid::paddle1X += Arkanoid::PADDLE_SPEED; }
+
+    // Ball speed control with L1/R1
+    uint32_t now = millis();
+    if (now - Arkanoid::lastSpeedChangeTime > 150) {  // Debounce 150ms
+      uint16_t btns = myControllers[0]->buttons();
+      if (btns & 0x04) {  // L1 button code
+        Arkanoid::ballSpeedMultiplier = max(0.3f, Arkanoid::ballSpeedMultiplier - 0.1f);
+        Arkanoid::lastSpeedChangeTime = now;
+      }
+      if (btns & 0x08) {  // R1 button code
+        Arkanoid::ballSpeedMultiplier = min(2.0f, Arkanoid::ballSpeedMultiplier + 0.1f);
+        Arkanoid::lastSpeedChangeTime = now;
+      }
+    }
   }
   if (myControllers[1] && myControllers[1]->isConnected()) {
     int axis = myControllers[1]->axisX();
     if (axis < -200) { if (Arkanoid::paddle2X > SCREEN_WIDTH / 2) Arkanoid::paddle2X -= Arkanoid::PADDLE_SPEED; }
     if (axis > 200) { if (Arkanoid::paddle2X < SCREEN_WIDTH - Arkanoid::PADDLE_WIDTH) Arkanoid::paddle2X += Arkanoid::PADDLE_SPEED; }
+
+    // Ball speed control with L1/R1 (P2 controller)
+    uint32_t now = millis();
+    if (now - Arkanoid::lastSpeedChangeTime > 150) {  // Debounce 150ms
+      uint16_t btns = myControllers[1]->buttons();
+      if (btns & 0x04) {  // L1 button code
+        Arkanoid::ballSpeedMultiplier = max(0.3f, Arkanoid::ballSpeedMultiplier - 0.1f);
+        Arkanoid::lastSpeedChangeTime = now;
+      }
+      if (btns & 0x08) {  // R1 button code
+        Arkanoid::ballSpeedMultiplier = min(2.0f, Arkanoid::ballSpeedMultiplier + 0.1f);
+        Arkanoid::lastSpeedChangeTime = now;
+      }
+    }
   }
 
-  // ball physics
-  Arkanoid::ballX += Arkanoid::ballXSpeed;
-  Arkanoid::ballY += Arkanoid::ballYSpeed;
+  // ball physics - apply speed multiplier
+  Arkanoid::ballX += Arkanoid::ballXSpeed * Arkanoid::ballSpeedMultiplier;
+  Arkanoid::ballY += Arkanoid::ballYSpeed * Arkanoid::ballSpeedMultiplier;
 
   // wall collision (left/right)
   if (Arkanoid::ballX <= 0 || Arkanoid::ballX >= SCREEN_WIDTH - Arkanoid::BALL_SIZE) { Arkanoid::ballXSpeed = -Arkanoid::ballXSpeed; playWallHit(); }
@@ -184,7 +215,7 @@ bool Arkanoid_update(ControllerPtr myControllers[]) {
     Arkanoid::ballY = SCREEN_HEIGHT / 2;
     Arkanoid::ballXSpeed = (random(0,2)==0)?2.0:-2.0;
     Arkanoid::ballYSpeed = random(-15,16)/10.0;
-    tft.fillScreen(ST7735_BLACK);
+    tft.fillScreen(ST77XX_BLACK);
     Arkanoid::drawBricks();
     playScoreSound();
   }
@@ -197,25 +228,34 @@ bool Arkanoid_update(ControllerPtr myControllers[]) {
 
   // render paddles
   if (Arkanoid::paddle1X != Arkanoid::prevPaddle1X) {
-    tft.fillRect(Arkanoid::prevPaddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, ST7735_BLACK);
+    tft.fillRect(Arkanoid::prevPaddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, ST77XX_BLACK);
     tft.fillRect(Arkanoid::paddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(0));
     Arkanoid::prevPaddle1X = Arkanoid::paddle1X;
   }
   if (Arkanoid::paddle2X != Arkanoid::prevPaddle2X) {
-    tft.fillRect(Arkanoid::prevPaddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, ST7735_BLACK);
+    tft.fillRect(Arkanoid::prevPaddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, ST77XX_BLACK);
     tft.fillRect(Arkanoid::paddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(1));
     Arkanoid::prevPaddle2X = Arkanoid::paddle2X;
   }
 
   // render ball
-  tft.fillRect(Arkanoid::prevBallX, Arkanoid::prevBallY, Arkanoid::BALL_SIZE, Arkanoid::BALL_SIZE, ST7735_BLACK);
-  tft.fillRect(Arkanoid::ballX, Arkanoid::ballY, Arkanoid::BALL_SIZE, Arkanoid::BALL_SIZE, ST7735_WHITE);
+  tft.fillRect(Arkanoid::prevBallX, Arkanoid::prevBallY, Arkanoid::BALL_SIZE, Arkanoid::BALL_SIZE, ST77XX_BLACK);
+  tft.fillRect(Arkanoid::ballX, Arkanoid::ballY, Arkanoid::BALL_SIZE, Arkanoid::BALL_SIZE, ST77XX_WHITE);
   Arkanoid::prevBallX = Arkanoid::ballX; Arkanoid::prevBallY = Arkanoid::ballY;
 
   // Display level in top-right
-  tft.fillRect(140, 2, 20, 10, ST7735_BLACK);
-  tft.setCursor(140, 2); tft.setTextColor(ST7735_WHITE); tft.setTextSize(1);
+  tft.fillRect(140, 2, 20, 10, ST77XX_BLACK);
+  tft.setCursor(140, 2); tft.setTextColor(ST77XX_WHITE); tft.setTextSize(1);
   tft.print("L"); tft.print(Arkanoid::level);
+
+  // Display speed multiplier
+  tft.fillRect(0, 2, 25, 10, ST77XX_BLACK);
+  tft.setCursor(0, 2); tft.setTextColor(ST77XX_WHITE); tft.setTextSize(1);
+  tft.print("S:");
+  if (Arkanoid::ballSpeedMultiplier < 1.0f) tft.setTextColor(ST77XX_CYAN);
+  else if (Arkanoid::ballSpeedMultiplier > 1.0f) tft.setTextColor(ST77XX_RED);
+  else tft.setTextColor(ST77XX_WHITE);
+  tft.print(Arkanoid::ballSpeedMultiplier, 1);
 
   return true; // Continue game
 }

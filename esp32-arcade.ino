@@ -1,6 +1,6 @@
-// Main launcher + shared hardware for Pong and Arkanoid
+// Main launcher + shared hardware for Pong, Arkanoid, Snake, Asteroids
 #include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
+#include <Adafruit_ST7789.h>
 #include <SPI.h>
 #include <Bluepad32.h>
 
@@ -8,13 +8,13 @@
 #define TFT_CS         15
 #define TFT_RST         4
 #define TFT_DC          2
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 #define BUZZER_PIN 26
 
-// Screen Dimensions (Landscape 160x128)
-const int SCREEN_WIDTH = 160;
-const int SCREEN_HEIGHT = 128;
+// Screen Dimensions (Portrait 240x280 for ST7789V2)
+const int SCREEN_WIDTH = 240;
+const int SCREEN_HEIGHT = 280;
 
 const uint8_t GAME_DPAD_UP = 0x01;
 const uint8_t GAME_DPAD_DOWN = 0x02;
@@ -27,6 +27,10 @@ void Pong_init(ControllerPtr myControllers[]);
 bool Pong_update(ControllerPtr myControllers[]);
 void Arkanoid_init(ControllerPtr myControllers[]);
 bool Arkanoid_update(ControllerPtr myControllers[]);
+void Snake_init(ControllerPtr myControllers[]);
+bool Snake_update(ControllerPtr myControllers[]);
+void Asteroids_init(ControllerPtr myControllers[]);
+bool Asteroids_update(ControllerPtr myControllers[]);
 
 // Handle freshly paired or connected gamepads
 void onConnectedController(ControllerPtr ctl) {
@@ -59,13 +63,13 @@ void playScoreSound(){ tone(BUZZER_PIN, 200, 250); }
 // Controller color mapping: Green, Blue, Cyan, Yellow, Red, Magenta
 uint16_t getPaddleColor(int playerIndex) {
   switch(playerIndex % 6) {
-    case 0: return ST7735_GREEN;   // P1
-    case 1: return ST7735_BLUE;    // P2
-    case 2: return ST7735_CYAN;    // P3
-    case 3: return ST7735_YELLOW;  // P4
-    case 4: return ST7735_RED;     // P5
-    case 5: return ST7735_MAGENTA; // P6
-    default: return ST7735_WHITE;
+    case 0: return ST77XX_GREEN;   // P1
+    case 1: return ST77XX_BLUE;    // P2
+    case 2: return ST77XX_CYAN;    // P3
+    case 3: return ST77XX_YELLOW;  // P4
+    case 4: return ST77XX_RED;     // P5
+    case 5: return ST77XX_MAGENTA; // P6
+    default: return ST77XX_WHITE;
   }
 }
 
@@ -83,28 +87,29 @@ void setControllerLED(int playerIndex) {
 }
 
 // Menu
-const char* MENU_ITEMS[] = { "Pong", "Arkanoid" };
-const int MENU_COUNT = 2;
+const char* MENU_ITEMS[] = { "Pong", "Arkanoid", "Snake", "Asteroids" };
+const int MENU_COUNT = 4;
 int menuIndex = 0;
 
 void drawMenu() {
-  tft.fillScreen(ST7735_BLACK);
-  tft.setTextSize(2);
-  tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(10, 10);
-  tft.print("Select Game");
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextSize(3);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(20, 20);
+  tft.print("ESP32 Arcade");
 
-  tft.setTextSize(1);
+  tft.setTextSize(2);
   for (int i = 0; i < MENU_COUNT; i++) {
-    int y = 40 + i * 18;
+    int y = 90 + i * 35;
     if (i == menuIndex) {
-      tft.fillRect(8, y-2, SCREEN_WIDTH-16, 16, ST7735_WHITE);
-      tft.setTextColor(ST7735_BLACK);
-      tft.setCursor(12, y);
+      tft.fillRect(10, y-4, SCREEN_WIDTH-20, 28, ST77XX_WHITE);
+      tft.setTextColor(ST77XX_BLACK);
+      tft.setCursor(25, y);
       tft.print(MENU_ITEMS[i]);
-      tft.setTextColor(ST7735_WHITE);
+      tft.setTextColor(ST77XX_WHITE);
     } else {
-      tft.setCursor(12, y);
+      tft.setTextColor(ST77XX_WHITE);
+      tft.setCursor(25, y);
       tft.print(MENU_ITEMS[i]);
     }
   }
@@ -127,10 +132,10 @@ void setup() {
   pinMode(25, OUTPUT);
   digitalWrite(25, HIGH);
 
-  // Initialize Display
-  tft.initR(INITR_BLACKTAB);
-  tft.setRotation(1);
-  tft.fillScreen(ST7735_BLACK);
+  // Initialize Display (ST7789V2 240x280)
+  tft.init(240, 280);
+  tft.setRotation(0);  // Portrait mode for 240x280
+  tft.fillScreen(ST77XX_BLACK);
 
   randomSeed(analogRead(0));
 
@@ -164,11 +169,15 @@ void loop() {
     if (anyControllerButtonPressed()) {
       selectedGame = menuIndex;
       inGame = true;
-      tft.fillScreen(ST7735_BLACK);
+      tft.fillScreen(ST77XX_BLACK);
       if (selectedGame == 0) {
         Pong_init(myControllers);
-      } else {
+      } else if (selectedGame == 1) {
         Arkanoid_init(myControllers);
+      } else if (selectedGame == 2) {
+        Snake_init(myControllers);
+      } else if (selectedGame == 3) {
+        Asteroids_init(myControllers);
       }
     }
   } else {
@@ -176,15 +185,19 @@ void loop() {
     bool continueGame = true;
     if (selectedGame == 0) {
       continueGame = Pong_update(myControllers);
-    } else {
+    } else if (selectedGame == 1) {
       continueGame = Arkanoid_update(myControllers);
+    } else if (selectedGame == 2) {
+      continueGame = Snake_update(myControllers);
+    } else if (selectedGame == 3) {
+      continueGame = Asteroids_update(myControllers);
     }
 
     if (!continueGame) {
       // Return to menu
       inGame = false;
       menuIndex = selectedGame; // Keep selection
-      tft.fillScreen(ST7735_BLACK);
+      tft.fillScreen(ST77XX_BLACK);
       drawMenu();
     }
     delay(16); // ~60fps

@@ -1,9 +1,9 @@
 // Pong game module (2-player)
 #include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
+#include <Adafruit_ST7789.h>
 #include <Bluepad32.h>
 
-extern Adafruit_ST7735 tft;
+extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
@@ -30,13 +30,16 @@ namespace Pong {
 
   int score1 = 0;
   int score2 = 0;
+
+  float ballSpeedMultiplier = 1.0f;
+  uint32_t lastSpeedChangeTime = 0;
 }
 
 namespace Pong {
   void drawScores() {
-    tft.fillRect(40, 2, 80, 12, ST7735_BLACK);
+    tft.fillRect(40, 2, 80, 12, ST77XX_BLACK);
     tft.setCursor(50, 2);
-    tft.setTextColor(ST7735_WHITE);
+    tft.setTextColor(ST77XX_WHITE);
     tft.setTextSize(1);
     tft.print(score1);
     tft.setCursor(100, 2);
@@ -46,7 +49,7 @@ namespace Pong {
 
 namespace Pong {
   void resetBall() {
-    tft.fillRect(prevBallX - 1, prevBallY - 1, BALL_SIZE + 2, BALL_SIZE + 2, ST7735_BLACK);
+    tft.fillRect(prevBallX - 1, prevBallY - 1, BALL_SIZE + 2, BALL_SIZE + 2, ST77XX_BLACK);
     ballX = SCREEN_WIDTH / 2;
     ballY = SCREEN_HEIGHT / 2;
     ballXSpeed = (random(0, 2) == 0) ? 2.0 : -2.0;
@@ -95,6 +98,20 @@ bool Pong_update(ControllerPtr myControllers[]) {
     if ((dpad & GAME_DPAD_DOWN) || (myControllers[0]->axisY() > 200)) {
       if (Pong::paddle1Y < SCREEN_HEIGHT - Pong::PADDLE_HEIGHT - 2) Pong::paddle1Y += Pong::PADDLE_SPEED;
     }
+
+    // Ball speed control with L1/R1
+    uint32_t now = millis();
+    if (now - Pong::lastSpeedChangeTime > 150) {  // Debounce 150ms
+      uint16_t btns = myControllers[0]->buttons();
+      if (btns & 0x04) {  // L1 button code
+        Pong::ballSpeedMultiplier = max(0.3f, Pong::ballSpeedMultiplier - 0.1f);
+        Pong::lastSpeedChangeTime = now;
+      }
+      if (btns & 0x08) {  // R1 button code
+        Pong::ballSpeedMultiplier = min(2.0f, Pong::ballSpeedMultiplier + 0.1f);
+        Pong::lastSpeedChangeTime = now;
+      }
+    }
   }
 
   // 2. Process Player 2 Controller -> Right Paddle
@@ -106,11 +123,25 @@ bool Pong_update(ControllerPtr myControllers[]) {
     if ((dpad & GAME_DPAD_DOWN) || (myControllers[1]->axisY() > 200)) {
       if (Pong::paddle2Y < SCREEN_HEIGHT - Pong::PADDLE_HEIGHT - 2) Pong::paddle2Y += Pong::PADDLE_SPEED;
     }
+
+    // Ball speed control with L1/R1 (P2 controller)
+    uint32_t now = millis();
+    if (now - Pong::lastSpeedChangeTime > 150) {  // Debounce 150ms
+      uint16_t btns = myControllers[1]->buttons();
+      if (btns & 0x04) {  // L1 button code
+        Pong::ballSpeedMultiplier = max(0.3f, Pong::ballSpeedMultiplier - 0.1f);
+        Pong::lastSpeedChangeTime = now;
+      }
+      if (btns & 0x08) {  // R1 button code
+        Pong::ballSpeedMultiplier = min(2.0f, Pong::ballSpeedMultiplier + 0.1f);
+        Pong::lastSpeedChangeTime = now;
+      }
+    }
   }
 
   // 3. Update Ball Physics
-  Pong::ballX += Pong::ballXSpeed;
-  Pong::ballY += Pong::ballYSpeed;
+  Pong::ballX += Pong::ballXSpeed * Pong::ballSpeedMultiplier;
+  Pong::ballY += Pong::ballYSpeed * Pong::ballSpeedMultiplier;
 
   // wall hit
   if (Pong::ballY <= 0 || Pong::ballY >= SCREEN_HEIGHT - Pong::BALL_SIZE) {
@@ -148,7 +179,7 @@ bool Pong_update(ControllerPtr myControllers[]) {
 
   // 4. Render Game Objects
   if (Pong::paddle1Y != Pong::prevPaddle1Y) {
-    tft.fillRect(10, Pong::prevPaddle1Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, ST7735_BLACK);
+    tft.fillRect(10, Pong::prevPaddle1Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, ST77XX_BLACK);
     tft.fillRect(10, Pong::paddle1Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, getPaddleColor(0));
     Pong::prevPaddle1Y = Pong::paddle1Y;
   } else {
@@ -156,17 +187,26 @@ bool Pong_update(ControllerPtr myControllers[]) {
   }
 
   if (Pong::paddle2Y != Pong::prevPaddle2Y) {
-    tft.fillRect(SCREEN_WIDTH - 10 - Pong::PADDLE_WIDTH, Pong::prevPaddle2Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, ST7735_BLACK);
+    tft.fillRect(SCREEN_WIDTH - 10 - Pong::PADDLE_WIDTH, Pong::prevPaddle2Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, ST77XX_BLACK);
     tft.fillRect(SCREEN_WIDTH - 10 - Pong::PADDLE_WIDTH, Pong::paddle2Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, getPaddleColor(1));
     Pong::prevPaddle2Y = Pong::paddle2Y;
   } else {
     tft.fillRect(SCREEN_WIDTH - 10 - Pong::PADDLE_WIDTH, Pong::paddle2Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, getPaddleColor(1));
   }
 
-  tft.fillRect(Pong::prevBallX, Pong::prevBallY, Pong::BALL_SIZE, Pong::BALL_SIZE, ST7735_BLACK);
-  tft.fillRect(Pong::ballX, Pong::ballY, Pong::BALL_SIZE, Pong::BALL_SIZE, ST7735_WHITE);
+  tft.fillRect(Pong::prevBallX, Pong::prevBallY, Pong::BALL_SIZE, Pong::BALL_SIZE, ST77XX_BLACK);
+  tft.fillRect(Pong::ballX, Pong::ballY, Pong::BALL_SIZE, Pong::BALL_SIZE, ST77XX_WHITE);
   Pong::prevBallX = Pong::ballX;
   Pong::prevBallY = Pong::ballY;
+
+  // Display speed multiplier in top-left
+  tft.fillRect(0, 2, 25, 10, ST77XX_BLACK);
+  tft.setCursor(0, 2); tft.setTextColor(ST77XX_WHITE); tft.setTextSize(1);
+  tft.print("S:");
+  if (Pong::ballSpeedMultiplier < 1.0f) tft.setTextColor(ST77XX_CYAN);
+  else if (Pong::ballSpeedMultiplier > 1.0f) tft.setTextColor(ST77XX_RED);
+  else tft.setTextColor(ST77XX_WHITE);
+  tft.print(Pong::ballSpeedMultiplier, 1);
 
   return true; // Continue game
 }
