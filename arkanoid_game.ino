@@ -4,151 +4,218 @@
 #include <Bluepad32.h>
 
 extern Adafruit_ST7735 tft;
-extern ControllerPtr myControllers[];
 extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
+extern uint16_t getPaddleColor(int playerIndex);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
-extern const int DPAD_UP;
-extern const int DPAD_DOWN;
+extern const uint8_t GAME_DPAD_UP;
+extern const uint8_t GAME_DPAD_DOWN;
 
-// Paddles (left/right like Pong but bricks in the center/top)
-const int PADDLE_WIDTH = 4;
-const int PADDLE_HEIGHT = 24;
-const int PADDLE_SPEED = 4;
+namespace Arkanoid {
+  // Paddles (horizontal at bottom)
+  const int PADDLE_WIDTH = 32;
+  const int PADDLE_HEIGHT = 6;
+  const int PADDLE_SPEED = 4;
+  const int PADDLE_Y = SCREEN_HEIGHT - PADDLE_HEIGHT - 2;
 
-// Ball
-const int BALL_SIZE = 4;
+  // Ball
+  const int BALL_SIZE = 4;
 
-// Bricks
-const int BRICK_ROWS = 4;
-const int BRICK_COLS = 10;
-int brickW;
-int brickH = 8;
-bool bricks[BRICK_ROWS][BRICK_COLS];
+  // Bricks - each brick has a type (0=none, 1=red, 2=yellow, 3=cyan)
+  const int BRICK_ROWS = 4;
+  const int BRICK_COLS = 10;
+  int brickW;
+  int brickH = 8;
+  uint8_t bricks[BRICK_ROWS][BRICK_COLS]; // 0=empty, 1-3=brick types
 
-int paddle1Y;
-int paddle2Y;
-int prevPaddle1Y, prevPaddle2Y;
+  int paddle1X, paddle2X;
+  int prevPaddle1X, prevPaddle2X;
 
-float ballX, ballY;
-float prevBallX, prevBallY;
-float ballXSpeed, ballYSpeed;
+  float ballX, ballY;
+  float prevBallX, prevBallY;
+  float ballXSpeed, ballYSpeed;
 
-int score1 = 0;
-int score2 = 0;
-int lastHitBy = -1; // 0 left, 1 right
+  int level = 1;
+  int bricksRemaining = 0;
+  int lastHitBy = -1; // 0 left, 1 right
 
-void drawBricks() {
-  for (int r = 0; r < BRICK_ROWS; r++) {
-    for (int c = 0; c < BRICK_COLS; c++) {
-      int x = (SCREEN_WIDTH - (BRICK_COLS * brickW)) / 2 + c * brickW;
-      int y = 8 + r * (brickH + 2);
-      if (bricks[r][c]) tft.fillRect(x, y, brickW-2, brickH, ST7735_RED);
-      else tft.fillRect(x, y, brickW-2, brickH, ST7735_BLACK);
-    }
-  }
-}
-
-void Arkanoid_init() {
-  paddle1Y = (SCREEN_HEIGHT - PADDLE_HEIGHT) / 2;
-  paddle2Y = (SCREEN_HEIGHT - PADDLE_HEIGHT) / 2;
-  prevPaddle1Y = paddle1Y;
-  prevPaddle2Y = paddle2Y;
-
-  ballX = SCREEN_WIDTH / 2;
-  ballY = SCREEN_HEIGHT / 2;
-  prevBallX = ballX;
-  prevBallY = ballY;
-  ballXSpeed = (random(0,2)==0)?2.0:-2.0;
-  ballYSpeed = random(-15,16)/10.0;
-
-  brickW = (SCREEN_WIDTH - 20) / BRICK_COLS;
-  for (int r=0;r<BRICK_ROWS;r++) for (int c=0;c<BRICK_COLS;c++) bricks[r][c]=true;
-
-  score1 = 0; score2 = 0; lastHitBy = -1;
-
-  tft.fillScreen(ST7735_BLACK);
-  drawBricks();
-  tft.fillRect(10, paddle1Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_WHITE);
-  tft.fillRect(SCREEN_WIDTH - 10 - PADDLE_WIDTH, paddle2Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_WHITE);
-}
-
-void Arkanoid_update() {
-  // paddles
-  if (myControllers[0] && myControllers[0]->isConnected()) {
-    uint8_t d = myControllers[0]->dpad();
-    if ((d & DPAD_UP) || myControllers[0]->axisY() < -200) { if (paddle1Y>2) paddle1Y -= PADDLE_SPEED; }
-    if ((d & DPAD_DOWN) || myControllers[0]->axisY() > 200) { if (paddle1Y < SCREEN_HEIGHT-PADDLE_HEIGHT-2) paddle1Y += PADDLE_SPEED; }
-  }
-  if (myControllers[1] && myControllers[1]->isConnected()) {
-    uint8_t d = myControllers[1]->dpad();
-    if ((d & DPAD_UP) || myControllers[1]->axisY() < -200) { if (paddle2Y>2) paddle2Y -= PADDLE_SPEED; }
-    if ((d & DPAD_DOWN) || myControllers[1]->axisY() > 200) { if (paddle2Y < SCREEN_HEIGHT-PADDLE_HEIGHT-2) paddle2Y += PADDLE_SPEED; }
-  }
-
-  // ball physics
-  ballX += ballXSpeed;
-  ballY += ballYSpeed;
-
-  // wall collision
-  if (ballY <= 0 || ballY >= SCREEN_HEIGHT - BALL_SIZE) { ballYSpeed = -ballYSpeed; playWallHit(); }
-
-  // paddle collisions (credit lastHitBy)
-  if (ballX <= 10 + PADDLE_WIDTH && ballX >= 10) {
-    if (ballY + BALL_SIZE >= paddle1Y && ballY <= paddle1Y + PADDLE_HEIGHT) {
-      ballXSpeed = -ballXSpeed; ballX = 10 + PADDLE_WIDTH + 1; playPaddleHit(); lastHitBy = 0;
-    }
-  }
-  if (ballX + BALL_SIZE >= SCREEN_WIDTH - 10 - PADDLE_WIDTH && ballX + BALL_SIZE <= SCREEN_WIDTH - 10) {
-    if (ballY + BALL_SIZE >= paddle2Y && ballY <= paddle2Y + PADDLE_HEIGHT) {
-      ballXSpeed = -ballXSpeed; ballX = SCREEN_WIDTH - 10 - PADDLE_WIDTH - BALL_SIZE - 1; playPaddleHit(); lastHitBy = 1;
+  uint16_t getBrickColor(uint8_t type) {
+    switch(type) {
+      case 1: return ST7735_RED;     // Red = normal
+      case 2: return ST7735_YELLOW;  // Yellow = extra ball
+      case 3: return ST7735_CYAN;    // Cyan = extra life
+      default: return ST7735_BLACK;
     }
   }
 
-  // brick collision
-  for (int r=0;r<BRICK_ROWS;r++){
-    for (int c=0;c<BRICK_COLS;c++){
-      if (!bricks[r][c]) continue;
-      int x = (SCREEN_WIDTH - (BRICK_COLS * brickW)) / 2 + c * brickW;
-      int y = 8 + r * (brickH + 2);
-      if (ballX + BALL_SIZE > x && ballX < x + brickW-2 && ballY + BALL_SIZE > y && ballY < y + brickH) {
-        bricks[r][c] = false;
-        drawBricks();
-        ballYSpeed = -ballYSpeed;
-        playWallHit();
-        if (lastHitBy == 0) score1 += 1; else if (lastHitBy == 1) score2 += 1;
+  void resetLevel() {
+    // Fill bricks based on level
+    bricksRemaining = 0;
+    for (int r = 0; r < BRICK_ROWS; r++) {
+      for (int c = 0; c < BRICK_COLS; c++) {
+        // More hard bricks (type 3) as level increases
+        if (random(100) < (20 + level * 5)) {
+          bricks[r][c] = 3; // Cyan (harder)
+        } else if (random(100) < 30) {
+          bricks[r][c] = 2; // Yellow (reward)
+        } else {
+          bricks[r][c] = 1; // Red (normal)
+        }
+        bricksRemaining++;
       }
     }
   }
 
-  // out of bounds -> score like Pong
-  if (ballX < 0) { score2++; playScoreSound(); ballX = SCREEN_WIDTH/2; ballY = SCREEN_HEIGHT/2; }
-  else if (ballX > SCREEN_WIDTH) { score1++; playScoreSound(); ballX = SCREEN_WIDTH/2; ballY = SCREEN_HEIGHT/2; }
+  void drawBricks() {
+    for (int r = 0; r < BRICK_ROWS; r++) {
+      for (int c = 0; c < BRICK_COLS; c++) {
+        int x = (SCREEN_WIDTH - (BRICK_COLS * brickW)) / 2 + c * brickW;
+        int y = 8 + r * (brickH + 2);
+        if (bricks[r][c]) {
+          tft.fillRect(x, y, brickW-2, brickH, getBrickColor(bricks[r][c]));
+        } else {
+          tft.fillRect(x, y, brickW-2, brickH, ST7735_BLACK);
+        }
+      }
+    }
+  }
+}
+
+void Arkanoid_init(ControllerPtr myControllers[]) {
+  Arkanoid::level = 1;
+  Arkanoid::paddle1X = 0;
+  Arkanoid::paddle2X = SCREEN_WIDTH / 2;
+  Arkanoid::prevPaddle1X = Arkanoid::paddle1X;
+  Arkanoid::prevPaddle2X = Arkanoid::paddle2X;
+
+  Arkanoid::ballX = SCREEN_WIDTH / 2;
+  Arkanoid::ballY = SCREEN_HEIGHT / 2;
+  Arkanoid::prevBallX = Arkanoid::ballX;
+  Arkanoid::prevBallY = Arkanoid::ballY;
+  Arkanoid::ballXSpeed = (random(0,2)==0)?2.0:-2.0;
+  Arkanoid::ballYSpeed = random(-15,16)/10.0;
+
+  Arkanoid::brickW = (SCREEN_WIDTH - 20) / Arkanoid::BRICK_COLS;
+  Arkanoid::resetLevel();
+
+  tft.fillScreen(ST7735_BLACK);
+  Arkanoid::drawBricks();
+  tft.fillRect(Arkanoid::paddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(0));
+  tft.fillRect(Arkanoid::paddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(1));
+}
+
+bool Arkanoid_update(ControllerPtr myControllers[]) {
+  // Check for return to menu (home button)
+  if (myControllers[0] && myControllers[0]->isConnected() && myControllers[0]->miscButtons()) {
+    return false;
+  }
+  if (myControllers[1] && myControllers[1]->isConnected() && myControllers[1]->miscButtons()) {
+    return false;
+  }
+
+  // Paddles - horizontal movement
+  if (myControllers[0] && myControllers[0]->isConnected()) {
+    int axis = myControllers[0]->axisX();
+    if (axis < -200) { if (Arkanoid::paddle1X > 0) Arkanoid::paddle1X -= Arkanoid::PADDLE_SPEED; }
+    if (axis > 200) { if (Arkanoid::paddle1X < SCREEN_WIDTH / 2 - Arkanoid::PADDLE_WIDTH) Arkanoid::paddle1X += Arkanoid::PADDLE_SPEED; }
+  }
+  if (myControllers[1] && myControllers[1]->isConnected()) {
+    int axis = myControllers[1]->axisX();
+    if (axis < -200) { if (Arkanoid::paddle2X > SCREEN_WIDTH / 2) Arkanoid::paddle2X -= Arkanoid::PADDLE_SPEED; }
+    if (axis > 200) { if (Arkanoid::paddle2X < SCREEN_WIDTH - Arkanoid::PADDLE_WIDTH) Arkanoid::paddle2X += Arkanoid::PADDLE_SPEED; }
+  }
+
+  // ball physics
+  Arkanoid::ballX += Arkanoid::ballXSpeed;
+  Arkanoid::ballY += Arkanoid::ballYSpeed;
+
+  // wall collision (left/right)
+  if (Arkanoid::ballX <= 0 || Arkanoid::ballX >= SCREEN_WIDTH - Arkanoid::BALL_SIZE) { Arkanoid::ballXSpeed = -Arkanoid::ballXSpeed; playWallHit(); }
+
+  // top wall collision
+  if (Arkanoid::ballY <= 0) { Arkanoid::ballYSpeed = -Arkanoid::ballYSpeed; playWallHit(); }
+
+  // paddle collisions (credit lastHitBy) - horizontal paddles at bottom
+  if (Arkanoid::ballY + Arkanoid::BALL_SIZE >= Arkanoid::PADDLE_Y && Arkanoid::ballY <= Arkanoid::PADDLE_Y + Arkanoid::PADDLE_HEIGHT) {
+    // Paddle 1 (left half)
+    if (Arkanoid::ballX + Arkanoid::BALL_SIZE >= Arkanoid::paddle1X && Arkanoid::ballX <= Arkanoid::paddle1X + Arkanoid::PADDLE_WIDTH) {
+      Arkanoid::ballYSpeed = -Arkanoid::ballYSpeed;
+      Arkanoid::ballY = Arkanoid::PADDLE_Y - Arkanoid::BALL_SIZE;
+      playPaddleHit();
+      Arkanoid::lastHitBy = 0;
+    }
+    // Paddle 2 (right half)
+    if (Arkanoid::ballX + Arkanoid::BALL_SIZE >= Arkanoid::paddle2X && Arkanoid::ballX <= Arkanoid::paddle2X + Arkanoid::PADDLE_WIDTH) {
+      Arkanoid::ballYSpeed = -Arkanoid::ballYSpeed;
+      Arkanoid::ballY = Arkanoid::PADDLE_Y - Arkanoid::BALL_SIZE;
+      playPaddleHit();
+      Arkanoid::lastHitBy = 1;
+    }
+  }
+
+  // brick collision
+  for (int r=0;r<Arkanoid::BRICK_ROWS;r++){
+    for (int c=0;c<Arkanoid::BRICK_COLS;c++){
+      if (!Arkanoid::bricks[r][c]) continue;
+      int x = (SCREEN_WIDTH - (Arkanoid::BRICK_COLS * Arkanoid::brickW)) / 2 + c * Arkanoid::brickW;
+      int y = 8 + r * (Arkanoid::brickH + 2);
+      if (Arkanoid::ballX + Arkanoid::BALL_SIZE > x && Arkanoid::ballX < x + Arkanoid::brickW-2 && Arkanoid::ballY + Arkanoid::BALL_SIZE > y && Arkanoid::ballY < y + Arkanoid::brickH) {
+        uint8_t brickType = Arkanoid::bricks[r][c];
+        Arkanoid::bricks[r][c] = 0;
+        Arkanoid::bricksRemaining--;
+        Arkanoid::drawBricks();
+        Arkanoid::ballYSpeed = -Arkanoid::ballYSpeed;
+        playWallHit();
+
+        // Handle rewards based on brick type
+        if (brickType == 2) playScoreSound(); // Extra ball reward sound
+        if (brickType == 3) playScoreSound(); // Extra life reward sound
+      }
+    }
+  }
+
+  // Check if level complete
+  if (Arkanoid::bricksRemaining <= 0) {
+    Arkanoid::level++;
+    Arkanoid::resetLevel();
+    Arkanoid::ballX = SCREEN_WIDTH / 2;
+    Arkanoid::ballY = SCREEN_HEIGHT / 2;
+    Arkanoid::ballXSpeed = (random(0,2)==0)?2.0:-2.0;
+    Arkanoid::ballYSpeed = random(-15,16)/10.0;
+    tft.fillScreen(ST7735_BLACK);
+    Arkanoid::drawBricks();
+    playScoreSound();
+  }
+
+  // out of bounds (bottom) -> reset ball
+  if (Arkanoid::ballY > SCREEN_HEIGHT) {
+    Arkanoid::ballX = SCREEN_WIDTH/2;
+    Arkanoid::ballY = SCREEN_HEIGHT/2;
+  }
 
   // render paddles
-  if (paddle1Y != prevPaddle1Y) {
-    tft.fillRect(10, prevPaddle1Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_BLACK);
-    tft.fillRect(10, paddle1Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_WHITE);
-    prevPaddle1Y = paddle1Y;
-  } else {
-    tft.fillRect(10, paddle1Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_WHITE);
+  if (Arkanoid::paddle1X != Arkanoid::prevPaddle1X) {
+    tft.fillRect(Arkanoid::prevPaddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, ST7735_BLACK);
+    tft.fillRect(Arkanoid::paddle1X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(0));
+    Arkanoid::prevPaddle1X = Arkanoid::paddle1X;
   }
-  if (paddle2Y != prevPaddle2Y) {
-    tft.fillRect(SCREEN_WIDTH - 10 - PADDLE_WIDTH, prevPaddle2Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_BLACK);
-    tft.fillRect(SCREEN_WIDTH - 10 - PADDLE_WIDTH, paddle2Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_WHITE);
-    prevPaddle2Y = paddle2Y;
-  } else {
-    tft.fillRect(SCREEN_WIDTH - 10 - PADDLE_WIDTH, paddle2Y, PADDLE_WIDTH, PADDLE_HEIGHT, ST7735_WHITE);
+  if (Arkanoid::paddle2X != Arkanoid::prevPaddle2X) {
+    tft.fillRect(Arkanoid::prevPaddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, ST7735_BLACK);
+    tft.fillRect(Arkanoid::paddle2X, Arkanoid::PADDLE_Y, Arkanoid::PADDLE_WIDTH, Arkanoid::PADDLE_HEIGHT, getPaddleColor(1));
+    Arkanoid::prevPaddle2X = Arkanoid::paddle2X;
   }
 
   // render ball
-  tft.fillRect(prevBallX, prevBallY, BALL_SIZE, BALL_SIZE, ST7735_BLACK);
-  tft.fillRect(ballX, ballY, BALL_SIZE, BALL_SIZE, ST7735_WHITE);
-  prevBallX = ballX; prevBallY = ballY;
+  tft.fillRect(Arkanoid::prevBallX, Arkanoid::prevBallY, Arkanoid::BALL_SIZE, Arkanoid::BALL_SIZE, ST7735_BLACK);
+  tft.fillRect(Arkanoid::ballX, Arkanoid::ballY, Arkanoid::BALL_SIZE, Arkanoid::BALL_SIZE, ST7735_WHITE);
+  Arkanoid::prevBallX = Arkanoid::ballX; Arkanoid::prevBallY = Arkanoid::ballY;
 
-  // optional score display
-  tft.setCursor(50, 2); tft.setTextColor(ST7735_WHITE); tft.setTextSize(1); tft.print(score1);
-  tft.setCursor(100, 2); tft.print(score2);
+  // Display level in top-right
+  tft.fillRect(140, 2, 20, 10, ST7735_BLACK);
+  tft.setCursor(140, 2); tft.setTextColor(ST7735_WHITE); tft.setTextSize(1);
+  tft.print("L"); tft.print(Arkanoid::level);
+
+  return true; // Continue game
 }

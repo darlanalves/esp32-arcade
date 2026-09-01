@@ -16,17 +16,17 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 const int SCREEN_WIDTH = 160;
 const int SCREEN_HEIGHT = 128;
 
-#define DPAD_UP    0x01
-#define DPAD_DOWN  0x02
+const uint8_t GAME_DPAD_UP = 0x01;
+const uint8_t GAME_DPAD_DOWN = 0x02;
 
 // Bluepad32 Global Controller Pointers (shared)
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
 // Forward declarations for game modules
-void Pong_init();
-void Pong_update();
-void Arkanoid_init();
-void Arkanoid_update();
+void Pong_init(ControllerPtr myControllers[]);
+bool Pong_update(ControllerPtr myControllers[]);
+void Arkanoid_init(ControllerPtr myControllers[]);
+bool Arkanoid_update(ControllerPtr myControllers[]);
 
 // Handle freshly paired or connected gamepads
 void onConnectedController(ControllerPtr ctl) {
@@ -34,7 +34,7 @@ void onConnectedController(ControllerPtr ctl) {
     if (myControllers[i] == nullptr) {
       myControllers[i] = ctl;
       Serial.printf("Controller connected at index %d\n", i);
-      ctl->setColorLED(0, 255, 0);
+      setControllerLED(i);
       break;
     }
   }
@@ -55,6 +55,32 @@ void onDisconnectedController(ControllerPtr ctl) {
 void playPaddleHit() { tone(BUZZER_PIN, 800, 50); }
 void playWallHit()   { tone(BUZZER_PIN, 500, 50); }
 void playScoreSound(){ tone(BUZZER_PIN, 200, 250); }
+
+// Controller color mapping: Green, Blue, Cyan, Yellow, Red, Magenta
+uint16_t getPaddleColor(int playerIndex) {
+  switch(playerIndex % 6) {
+    case 0: return ST7735_GREEN;   // P1
+    case 1: return ST7735_BLUE;    // P2
+    case 2: return ST7735_CYAN;    // P3
+    case 3: return ST7735_YELLOW;  // P4
+    case 4: return ST7735_RED;     // P5
+    case 5: return ST7735_MAGENTA; // P6
+    default: return ST7735_WHITE;
+  }
+}
+
+void setControllerLED(int playerIndex) {
+  if (myControllers[playerIndex] && myControllers[playerIndex]->isConnected()) {
+    switch(playerIndex % 6) {
+      case 0: myControllers[playerIndex]->setColorLED(0, 255, 0); break;    // Green
+      case 1: myControllers[playerIndex]->setColorLED(0, 0, 255); break;    // Blue
+      case 2: myControllers[playerIndex]->setColorLED(0, 255, 255); break;  // Cyan
+      case 3: myControllers[playerIndex]->setColorLED(255, 255, 0); break;  // Yellow
+      case 4: myControllers[playerIndex]->setColorLED(255, 0, 0); break;    // Red
+      case 5: myControllers[playerIndex]->setColorLED(255, 0, 255); break;  // Magenta
+    }
+  }
+}
 
 // Menu
 const char* MENU_ITEMS[] = { "Pong", "Arkanoid" };
@@ -124,8 +150,8 @@ void loop() {
     for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
       if (myControllers[i] && myControllers[i]->isConnected()) {
         uint8_t d = myControllers[i]->dpad();
-        if (d & DPAD_UP) { menuIndex = max(0, menuIndex - 1); }
-        if (d & DPAD_DOWN) { menuIndex = min(MENU_COUNT - 1, menuIndex + 1); }
+        if (d & GAME_DPAD_UP) { menuIndex = max(0, menuIndex - 1); }
+        if (d & GAME_DPAD_DOWN) { menuIndex = min(MENU_COUNT - 1, menuIndex + 1); }
       }
     }
 
@@ -139,11 +165,28 @@ void loop() {
       selectedGame = menuIndex;
       inGame = true;
       tft.fillScreen(ST7735_BLACK);
-      if (selectedGame == 0) Pong_init(); else Arkanoid_init();
+      if (selectedGame == 0) {
+        Pong_init(myControllers);
+      } else {
+        Arkanoid_init(myControllers);
+      }
     }
   } else {
     // Run selected game's update
-    if (selectedGame == 0) Pong_update(); else Arkanoid_update();
+    bool continueGame = true;
+    if (selectedGame == 0) {
+      continueGame = Pong_update(myControllers);
+    } else {
+      continueGame = Arkanoid_update(myControllers);
+    }
+
+    if (!continueGame) {
+      // Return to menu
+      inGame = false;
+      menuIndex = selectedGame; // Keep selection
+      tft.fillScreen(ST7735_BLACK);
+      drawMenu();
+    }
     delay(16); // ~60fps
   }
 }
