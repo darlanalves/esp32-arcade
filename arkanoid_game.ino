@@ -25,11 +25,15 @@ namespace Arkanoid {
   const int BALL_SIZE = 4;
 
   // Bricks - each brick has a type (0=none, 1=red, 2=yellow, 3=cyan)
-  const int BRICK_ROWS = 4;
+  const int MAX_BRICK_ROWS = 22;
+  const int INITIAL_BRICK_ROWS = 6;
   const int BRICK_COLS = 10;
+  const uint32_t NEW_ROW_INTERVAL_MS = 10000;
   int brickW;
   int brickH = 8;
-  uint8_t bricks[BRICK_ROWS][BRICK_COLS]; // 0=empty, 1-3=brick types
+  uint8_t bricks[MAX_BRICK_ROWS][BRICK_COLS]; // 0=empty, 1-3=brick types
+  int brickRows = INITIAL_BRICK_ROWS;
+  uint32_t lastNewRowTime = 0;
 
   int paddle1X, paddle2X;
   int prevPaddle1X, prevPaddle2X;
@@ -54,26 +58,48 @@ namespace Arkanoid {
     }
   }
 
-  void resetLevel() {
-    // Fill bricks based on level
-    bricksRemaining = 0;
-    for (int r = 0; r < BRICK_ROWS; r++) {
+  uint8_t newBrickType() {
+    if (random(100) < (20 + level * 5)) return 3; // Cyan
+    if (random(100) < 30) return 2; // Yellow
+    return 1; // Red
+  }
+
+  void addTopRow() {
+    if (brickRows == MAX_BRICK_ROWS) {
       for (int c = 0; c < BRICK_COLS; c++) {
-        // More hard bricks (type 3) as level increases
-        if (random(100) < (20 + level * 5)) {
-          bricks[r][c] = 3; // Cyan (harder)
-        } else if (random(100) < 30) {
-          bricks[r][c] = 2; // Yellow (reward)
-        } else {
-          bricks[r][c] = 1; // Red (normal)
-        }
-        bricksRemaining++;
+        if (bricks[brickRows - 1][c]) bricksRemaining--;
       }
+    } else {
+      brickRows++;
+    }
+
+    for (int r = brickRows - 1; r > 0; r--) {
+      for (int c = 0; c < BRICK_COLS; c++) {
+        bricks[r][c] = bricks[r - 1][c];
+      }
+    }
+
+    for (int c = 0; c < BRICK_COLS; c++) {
+      bricks[0][c] = newBrickType();
+      bricksRemaining++;
     }
   }
 
+  void resetLevel() {
+    bricksRemaining = 0;
+    brickRows = 0;
+    for (int r = 0; r < MAX_BRICK_ROWS; r++) {
+      for (int c = 0; c < BRICK_COLS; c++) {
+        bricks[r][c] = 0;
+      }
+    }
+    for (int r = 0; r < INITIAL_BRICK_ROWS; r++) addTopRow();
+  }
+
   void drawBricks() {
-    for (int r = 0; r < BRICK_ROWS; r++) {
+    int brickAreaX = (SCREEN_WIDTH - (BRICK_COLS * brickW)) / 2;
+    tft.fillRect(brickAreaX, 8, BRICK_COLS * brickW, MAX_BRICK_ROWS * (brickH + 2), ST77XX_BLACK);
+    for (int r = 0; r < brickRows; r++) {
       for (int c = 0; c < BRICK_COLS; c++) {
         int x = (SCREEN_WIDTH - (BRICK_COLS * brickW)) / 2 + c * brickW;
         int y = 8 + r * (brickH + 2);
@@ -103,6 +129,7 @@ void Arkanoid_init(ControllerPtr myControllers[]) {
 
   Arkanoid::brickW = (SCREEN_WIDTH - 20) / Arkanoid::BRICK_COLS;
   Arkanoid::resetLevel();
+  Arkanoid::lastNewRowTime = millis();
 
   tft.fillScreen(ST77XX_BLACK);
   drawGameBorder(tft);
@@ -189,7 +216,7 @@ bool Arkanoid_update(ControllerPtr myControllers[]) {
   }
 
   // brick collision
-  for (int r=0;r<Arkanoid::BRICK_ROWS;r++){
+  for (int r=0;r<Arkanoid::brickRows;r++){
     for (int c=0;c<Arkanoid::BRICK_COLS;c++){
       if (!Arkanoid::bricks[r][c]) continue;
       int x = (SCREEN_WIDTH - (Arkanoid::BRICK_COLS * Arkanoid::brickW)) / 2 + c * Arkanoid::brickW;
@@ -207,6 +234,12 @@ bool Arkanoid_update(ControllerPtr myControllers[]) {
         if (brickType == 3) playScoreSound(); // Extra life reward sound
       }
     }
+  }
+
+  if (millis() - Arkanoid::lastNewRowTime >= Arkanoid::NEW_ROW_INTERVAL_MS) {
+    Arkanoid::addTopRow();
+    Arkanoid::lastNewRowTime = millis();
+    Arkanoid::drawBricks();
   }
 
   // Check if level complete
