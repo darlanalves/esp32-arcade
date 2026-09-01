@@ -116,7 +116,7 @@ namespace Asteroids {
   }
 
   void drawAsteroid(float x, float y, int size) {
-    int radius = 4 + size * 3;
+    int radius = 10 - size * 3;
     for (int i = 0; i < 8; i++) {
       float a1 = (float)i * M_PI / 4.0;
       float a2 = (float)(i + 1) * M_PI / 4.0;
@@ -289,7 +289,7 @@ bool Asteroids_update(ControllerPtr myControllers[]) {
       // Check bullet collisions
       for (int j = 0; j < Asteroids::MAX_BULLETS; j++) {
         if (Asteroids::bullets[j].active) {
-          int radius = 4 + Asteroids::asteroids[i].size * 3;
+          int radius = 10 - Asteroids::asteroids[i].size * 3;
           float dx = Asteroids::bullets[j].x - Asteroids::asteroids[i].x;
           float dy = Asteroids::bullets[j].y - Asteroids::asteroids[i].y;
           if (dx*dx + dy*dy < radius*radius) {

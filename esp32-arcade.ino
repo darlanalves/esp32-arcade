@@ -17,7 +17,7 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 const int SCREEN_WIDTH = 240;
 const int SCREEN_HEIGHT = 280;
 const int PLAYFIELD_HEIGHT = SCREEN_HEIGHT - 18;
-const int PLAYFIELD_BORDER_WIDTH = 3;
+const int PLAYFIELD_BORDER_WIDTH = 5;
 
 const uint8_t GAME_DPAD_UP = 0x01;
 const uint8_t GAME_DPAD_DOWN = 0x02;
@@ -106,6 +106,16 @@ const char* MENU_ITEMS[] = { "Pong", "Arkanoid", "Snake", "Asteroids" };
 const int MENU_COUNT = 4;
 int menuIndex = 0;
 
+void drawMenuItem(int itemIndex, bool selected) {
+  int y = 90 + itemIndex * 35;
+  tft.fillRect(10, y - 4, SCREEN_WIDTH - 20, 28,
+               selected ? ST77XX_WHITE : ST77XX_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(selected ? ST77XX_BLACK : ST77XX_WHITE);
+  tft.setCursor(25, y);
+  tft.print(MENU_ITEMS[itemIndex]);
+}
+
 void drawMenu() {
   tft.fillScreen(ST77XX_BLACK);
   tft.setTextSize(3);
@@ -115,18 +125,7 @@ void drawMenu() {
 
   tft.setTextSize(2);
   for (int i = 0; i < MENU_COUNT; i++) {
-    int y = 90 + i * 35;
-    if (i == menuIndex) {
-      tft.fillRect(10, y-4, SCREEN_WIDTH-20, 28, ST77XX_WHITE);
-      tft.setTextColor(ST77XX_BLACK);
-      tft.setCursor(25, y);
-      tft.print(MENU_ITEMS[i]);
-      tft.setTextColor(ST77XX_WHITE);
-    } else {
-      tft.setTextColor(ST77XX_WHITE);
-      tft.setCursor(25, y);
-      tft.print(MENU_ITEMS[i]);
-    }
+    drawMenuItem(i, i == menuIndex);
   }
 }
 
@@ -164,19 +163,40 @@ void loop() {
 
   if (!inGame) {
     static int lastMenuIndex = -1;
-    // read dpad from any controller to move selection
+    static bool menuDpadHeld = false;
+    bool upPressed = false;
+    bool downPressed = false;
+
+    // Read every controller once, but advance only on a new D-pad press.
     for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
       if (myControllers[i] && myControllers[i]->isConnected()) {
         uint8_t d = myControllers[i]->dpad();
-        if (d & GAME_DPAD_UP) { menuIndex = max(0, menuIndex - 1); }
-        if (d & GAME_DPAD_DOWN) { menuIndex = min(MENU_COUNT - 1, menuIndex + 1); }
+        upPressed = upPressed || (d & GAME_DPAD_UP);
+        downPressed = downPressed || (d & GAME_DPAD_DOWN);
       }
     }
 
     if (menuIndex != lastMenuIndex) {
-      drawMenu();
+      if (lastMenuIndex < 0) {
+        drawMenu();
+      } else {
+        drawMenuItem(lastMenuIndex, false);
+        drawMenuItem(menuIndex, true);
+      }
       lastMenuIndex = menuIndex;
     }
+
+    if (!menuDpadHeld) {
+      int previousMenuIndex = menuIndex;
+      if (upPressed && !downPressed) menuIndex = max(0, menuIndex - 1);
+      if (downPressed && !upPressed) menuIndex = min(MENU_COUNT - 1, menuIndex + 1);
+      if (menuIndex != previousMenuIndex) {
+        drawMenuItem(previousMenuIndex, false);
+        drawMenuItem(menuIndex, true);
+        lastMenuIndex = menuIndex;
+      }
+    }
+    menuDpadHeld = upPressed || downPressed;
 
     // start game when any non-dpad button or axis is pressed
     if (anyControllerButtonPressed()) {
