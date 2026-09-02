@@ -3,12 +3,15 @@
 #include <Adafruit_ST7789.h>
 #include <SPI.h>
 #include <Bluepad32.h>
+#include "arkanoid.h"
+#include "snake.h"
+#include "asteroids.h"
 
 // TFT control pins avoid the ESP32 boot-strapping GPIOs (0, 2, 4, 5, 12, and 15).
-#define TFT_CS         32
-#define TFT_RST        27
-#define TFT_DC         25
-#define TFT_BLK_PIN    33
+#define TFT_CS 32
+#define TFT_RST 27
+#define TFT_DC 25
+#define TFT_BLK_PIN 33
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 #define BUZZER_PIN 26
@@ -22,15 +25,16 @@ const int PLAYFIELD_BORDER_WIDTH = 5;
 const uint8_t GAME_DPAD_UP = 0x01;
 const uint8_t GAME_DPAD_DOWN = 0x02;
 
-void drawGameBorder(Adafruit_GFX& display) {
-  for (int offset = 0; offset < PLAYFIELD_BORDER_WIDTH; offset++) {
+void drawGameBorder(Adafruit_GFX &display)
+{
+  for (int offset = 0; offset < PLAYFIELD_BORDER_WIDTH; offset++)
+  {
     display.drawRect(
-      offset,
-      offset,
-      SCREEN_WIDTH - offset * 2,
-      PLAYFIELD_HEIGHT - offset * 2,
-      ST77XX_WHITE
-    );
+        offset,
+        offset,
+        SCREEN_WIDTH - offset * 2,
+        PLAYFIELD_HEIGHT - offset * 2,
+        ST77XX_WHITE);
   }
 }
 
@@ -38,77 +42,148 @@ void drawGameBorder(Adafruit_GFX& display) {
 ControllerPtr P1;
 ControllerPtr P2;
 
-// Forward declarations for game modules
-void Pong_init(ControllerPtr myControllers[]);
-bool Pong_update(ControllerPtr myControllers[]);
-void Arkanoid_init(ControllerPtr myControllers[]);
-bool Arkanoid_update(ControllerPtr myControllers[]);
-void Snake_init(ControllerPtr myControllers[]);
-bool Snake_update();
-void Asteroids_init(ControllerPtr myControllers[]);
-bool Asteroids_update(ControllerPtr myControllers[]);
+// Abstract Game interface used by the menu/launcher
+class Game
+{
+public:
+  virtual void setControllers(ControllerPtr p1, ControllerPtr p2) = 0;
+  virtual void init() = 0;
+  // return false to indicate the game ended and we should return to menu
+  virtual bool update() = 0;
+  virtual const char *getName() = 0;
+  virtual ~Game() {}
+};
+
+// Wrapper for Pong (uses functions in pong.ino)
+class PongWrapper : public Game {
+public:
+  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ctrls[0] = p1; ctrls[1] = p2; }
+  void init() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; Pong_init(arr); }
+  bool update() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; return Pong_update(arr); }
+  const char *getName() override { return "Pong"; }
+private:
+  ControllerPtr ctrls[2] = {nullptr, nullptr};
+};
+
+// Wrapper for Arkanoid (class in arkanoid.h)
+class ArkanoidWrapper : public Game {
+public:
+  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ark.setControllers(p1, p2); }
+  void init() override { ark.init(); }
+  bool update() override { return ark.update(); }
+  const char *getName() override { return ark.getName(); }
+private:
+  ArkanoidGame ark;
+};
+
+// Wrapper for Snake (class in snake.h)
+class SnakeWrapper : public Game {
+public:
+  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ctrls[0]=p1; ctrls[1]=p2; snake.setControllers(p1, p2); }
+  void init() override { snake.init(ctrls[0], ctrls[1]); }
+  bool update() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; return snake.update(); }
+  const char *getName() override { return snake.getName(); }
+private:
+  SnakeGame snake;
+  ControllerPtr ctrls[2] = {nullptr, nullptr};
+};
+
+// Wrapper for Asteroids (functions in asteroids.h)
+class AsteroidsWrapper : public Game {
+public:
+  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ctrls[0] = p1; ctrls[1] = p2; }
+  void init() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; Asteroids_init(arr); }
+  bool update() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; return Asteroids_update(arr); }
+  const char *getName() override { return "Asteroids"; }
+private:
+  ControllerPtr ctrls[2] = {nullptr, nullptr};
+};
+
+// Available games
+static Game *availableGames[] = {
+    new PongWrapper(),
+    new ArkanoidWrapper(),
+    new SnakeWrapper(),
+    new AsteroidsWrapper(),
+};
 
 // Handle freshly paired or connected gamepads
-void onConnectedController(ControllerPtr ctl) {
-  if (P1 == nullptr) {
+void onConnectedController(ControllerPtr ctl)
+{
+  if (P1 == nullptr)
+  {
     P1 = ctl;
-    Serial.printf("Player 1 connected");
+    Serial.printf("Player 1 connected\n");
     setControllerLED(ctl, 0);
+    return;
   }
 
-  if (P2 == nullptr && ctl != P1) {
+  if (P2 == nullptr && ctl != P1)
+  {
     P2 = ctl;
-    Serial.printf("Player 2 connected");
+    Serial.printf("Player 2 connected\n");
     setControllerLED(ctl, 1);
   }
 }
 
 // Handle disconnected gamepads
-void onDisconnectedController(ControllerPtr ctl) {
-  if (P1->getIndex() == ctl->getIndex()) {
+void onDisconnectedController(ControllerPtr ctl)
+{
+  if (P1 && P1->index() == ctl->index())
+  {
     P1 = nullptr;
-    Serial.printf("Player 1 disconnected");
+    Serial.printf("Player 1 disconnected\n");
   }
 
-  if (P2->getIndex() == ctl->getIndex()) {
+  if (P2 && P2->index() == ctl->index())
+  {
     P2 = nullptr;
-    Serial.printf("Player 2 disconnected");
+    Serial.printf("Player 2 disconnected\n");
   }
 }
 
 // Simple sound helpers used by games
 void playPaddleHit() { tone(BUZZER_PIN, 800, 50); }
-void playWallHit()   { tone(BUZZER_PIN, 500, 50); }
-void playScoreSound(){ tone(BUZZER_PIN, 200, 250); }
+void playWallHit() { tone(BUZZER_PIN, 500, 50); }
+void playScoreSound() { tone(BUZZER_PIN, 200, 250); }
 
 // Controller color mapping: Green, Blue, Cyan, Yellow, Red, Magenta
-uint16_t getPaddleColor(int playerIndex) {
-  switch(playerIndex) {
-    case 0: return ST77XX_GREEN;   // P1
-    case 1: return ST77XX_BLUE;    // P2
+uint16_t getPaddleColor(int playerIndex)
+{
+  switch (playerIndex)
+  {
+  case 0:
+    return ST77XX_GREEN; // P1
+  case 1:
+    return ST77XX_BLUE; // P2
+  default:
+    return ST77XX_WHITE;
   }
 }
 
-void setControllerLED(ControllerPtr ctl) {
-  if (ctl->isConnected()) {
-    playerIndex = ctl->getIndex();
+void setControllerLED(ControllerPtr ctl, int playerIndex)
+{
+  if (!ctl || !ctl->isConnected())
+    return;
 
-    if(playerIndex == 0) {
-      ctl->setColorLED(0, 255, 0); break;    // Green
-    }
-
-    if(playerIndex == 1) {
-      ctl->setColorLED(0, 0, 255); break;    // Blue
-    }
+  if (playerIndex == 0)
+  {
+    ctl->setColorLED(0, 255, 0); // Green
+    return;
+  }
+  if (playerIndex == 1)
+  {
+    ctl->setColorLED(0, 0, 255); // Blue
+    return;
   }
 }
 
 // Menu
-const char* MENU_ITEMS[] = { "Pong", "Arkanoid", "Snake", "Asteroids" };
-const int MENU_COUNT = 4;
 int menuIndex = 0;
+const int MENU_COUNT = sizeof(availableGames) / sizeof(availableGames[0]);
 
-void drawMenuItem(int itemIndex, bool selected) {
+void drawMenuItem(int itemIndex, bool selected)
+{
   int y = 90 + itemIndex * 35;
   tft.fillRect(10, y - 4, SCREEN_WIDTH - 20, 28,
                selected ? ST77XX_WHITE : ST77XX_BLACK);
@@ -121,10 +196,11 @@ void drawMenuItem(int itemIndex, bool selected) {
   tft.setTextSize(2);
   tft.setTextColor(selected ? ST77XX_BLACK : ST77XX_WHITE);
   tft.setCursor(25, y);
-  tft.print(MENU_ITEMS[itemIndex]);
+  tft.print(availableGames[itemIndex]->getName());
 }
 
-void drawMenu() {
+void drawMenu()
+{
   tft.fillScreen(ST77XX_BLACK);
   tft.setTextSize(3);
   tft.setTextColor(ST77XX_WHITE);
@@ -132,19 +208,21 @@ void drawMenu() {
   tft.print("ESP32 Arcade");
 
   tft.setTextSize(2);
-  for (int i = 0; i < MENU_COUNT; i++) {
+  for (int i = 0; i < MENU_COUNT; i++)
+  {
     drawMenuItem(i, i == menuIndex);
   }
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   pinMode(TFT_BLK_PIN, OUTPUT);
   digitalWrite(TFT_BLK_PIN, HIGH);
 
   // Initialize Display (ST7789V2 240x280)
   tft.init(240, 280);
-  tft.setRotation(90);  // Portrait mode for 240x280
+  tft.setRotation(90); // Portrait mode for 240x280
   tft.fillScreen(ST77XX_BLACK);
 
   randomSeed(analogRead(0));
@@ -156,39 +234,54 @@ void setup() {
 bool inGame = false;
 int selectedGame = 0;
 
-void loop() {
+void loop()
+{
   BP32.update();
 
-  if (!inGame) {
+  if (!inGame)
+  {
     static int lastMenuIndex = -1;
     static bool menuDpadHeld = false;
     bool upPressed = false;
     bool downPressed = false;
 
-    // Read every controller once, but advance only on a new D-pad press.
-    for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
-      if (myControllers[i] && myControllers[i]->isConnected()) {
-        uint8_t d = myControllers[i]->dpad();
-        upPressed = upPressed || (d & GAME_DPAD_UP);
-        downPressed = downPressed || (d & GAME_DPAD_DOWN);
-      }
+    // Check connected players (only P1/P2 used)
+    if (P1 && P1->isConnected())
+    {
+      uint8_t d = P1->dpad();
+      upPressed = upPressed || (d & GAME_DPAD_UP);
+      downPressed = downPressed || (d & GAME_DPAD_DOWN);
+    }
+    if (P2 && P2->isConnected())
+    {
+      uint8_t d = P2->dpad();
+      upPressed = upPressed || (d & GAME_DPAD_UP);
+      downPressed = downPressed || (d & GAME_DPAD_DOWN);
     }
 
-    if (menuIndex != lastMenuIndex) {
-      if (lastMenuIndex < 0) {
+    if (menuIndex != lastMenuIndex)
+    {
+      if (lastMenuIndex < 0)
+      {
         drawMenu();
-      } else {
+      }
+      else
+      {
         drawMenuItem(lastMenuIndex, false);
         drawMenuItem(menuIndex, true);
       }
       lastMenuIndex = menuIndex;
     }
 
-    if (!menuDpadHeld) {
+    if (!menuDpadHeld)
+    {
       int previousMenuIndex = menuIndex;
-      if (upPressed && !downPressed) menuIndex = max(0, menuIndex - 1);
-      if (downPressed && !upPressed) menuIndex = min(MENU_COUNT - 1, menuIndex + 1);
-      if (menuIndex != previousMenuIndex) {
+      if (upPressed && !downPressed)
+        menuIndex = max(0, menuIndex - 1);
+      if (downPressed && !upPressed)
+        menuIndex = min(MENU_COUNT - 1, menuIndex + 1);
+      if (menuIndex != previousMenuIndex)
+      {
         drawMenuItem(previousMenuIndex, false);
         drawMenuItem(menuIndex, true);
         lastMenuIndex = menuIndex;
@@ -197,37 +290,26 @@ void loop() {
     menuDpadHeld = upPressed || downPressed;
 
     // start game when any non-dpad button or axis is pressed
-    bool startGame = (P1->isConnected() && P1->miscHome()) || (P2->isConnected() && P2->miscHome());
+    bool startGame = (P1 && P1->isConnected() && P1->miscHome()) || (P2 && P2->isConnected() && P2->miscHome());
 
-    if (startGame) {
+    if (startGame)
+    {
       selectedGame = menuIndex;
       inGame = true;
       tft.fillScreen(ST77XX_BLACK);
 
-      if (selectedGame == 0) {
-        Pong_init(myControllers);
-      } else if (selectedGame == 1) {
-        Arkanoid_init(myControllers);
-      } else if (selectedGame == 2) {
-        Snake_init(myControllers);
-      } else if (selectedGame == 3) {
-        Asteroids_init(myControllers);
-      }
+      // Configure controllers & initialize game via Game interface
+      availableGames[selectedGame]->setControllers(P1, P2);
+      availableGames[selectedGame]->init();
     }
-  } else {
+  }
+  else
+  {
     // Run selected game's update
-    bool continueGame = true;
-    if (selectedGame == 0) {
-      continueGame = Pong_update();
-    } else if (selectedGame == 1) {
-      continueGame = Arkanoid_update();
-    } else if (selectedGame == 2) {
-      continueGame = Snake_update();
-    } else if (selectedGame == 3) {
-      continueGame = Asteroids_update();
-    }
+    bool continueGame = availableGames[selectedGame]->update();
 
-    if (!continueGame) {
+    if (!continueGame)
+    {
       // Return to menu
       inGame = false;
       menuIndex = selectedGame; // Keep selection
