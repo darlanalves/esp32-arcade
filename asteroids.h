@@ -9,19 +9,16 @@ extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
-extern uint16_t getPaddleColor(int playerIndex);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
-extern const uint8_t GAME_DPAD_UP;
-extern const uint8_t GAME_DPAD_DOWN;
 
 class AsteroidsGame : public Game
 {
 public:
   void setControllers(ControllerPtr p1, ControllerPtr p2) override
   {
-    ctrls[0] = p1;
-    ctrls[1] = p2;
+    controller1 = p1;
+    controller2 = p2;
   }
 
   void init() override
@@ -51,25 +48,28 @@ public:
 
   bool update() override
   {
-    // Check for return to menu
-    if (ctrls[0] && ctrls[0]->isConnected() && ctrls[0]->miscButtons())
+    // Check for return to menu (home button)
+    if (controller1 && controller1->isConnected() && controller1->miscBack())
       return false;
 
-    if (ctrls[0] && ctrls[0]->isConnected())
+    if (controller2 && controller2->isConnected() && controller2->miscBack())
+      return false;
+
+    if (controller1 && controller1->isConnected())
     {
-      int axisX = ctrls[0]->axisX();
-      int axisY = ctrls[0]->axisY();
-      uint16_t btns = ctrls[0]->buttons();
+      int axisX = controller1->axisX();
+      int axisY = controller1->axisY();
+      uint16_t btns = controller1->buttons();
 
       if (axisX != 0 || axisY != 0)
         shipAngle = atan2(-axisY, axisX) * 180.0 / M_PI + 90;
 
-      if (btns & 0x01 || btns & 0x02)
+      if (controller1.y() || controller1.a())
         shipSpeed = min(MAX_SHIP_SPEED, shipSpeed + 0.15f);
       else
         shipSpeed *= 0.95f;
 
-      if ((btns & 0x04) || (btns & 0x08))
+      if (controller1.b() || controller1.x())
       {
         uint32_t now = millis();
         if (now - lastShotTime > 200)
@@ -213,7 +213,8 @@ public:
 
 private:
   // controllers
-  ControllerPtr ctrls[2] = {nullptr, nullptr};
+  ControllerPtr controller1 = nullptr;
+  ControllerPtr controller2 = nullptr;
 
   // constants
   static const int TILE_HEIGHT = 32;

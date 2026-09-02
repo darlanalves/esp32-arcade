@@ -7,12 +7,11 @@ extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
-extern uint16_t getPaddleColor(int playerIndex);
 extern void drawGameBorder(Adafruit_GFX &display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
-extern const uint8_t GAME_DPAD_UP;
-extern const uint8_t GAME_DPAD_DOWN;
+extern const uint8_t DPAD_UP;
+extern const uint8_t DPAD_DOWN;
 
 class PongGame : public Game
 {
@@ -49,21 +48,22 @@ public:
   bool update() override
   {
     // Check for return to menu (home button)
-    if (ctrls[0] && ctrls[0]->isConnected() && ctrls[0]->miscButtons())
+    if (controller1 && controller1->isConnected() && controller1->miscBack())
       return false;
-    if (ctrls[1] && ctrls[1]->isConnected() && ctrls[1]->miscButtons())
+
+    if (controller2 && controller2->isConnected() && controller2->miscBack())
       return false;
 
     // Player 1
     if (ctrls[0] && ctrls[0]->isConnected())
     {
       uint8_t dpad = ctrls[0]->dpad();
-      if ((dpad & GAME_DPAD_UP) || (ctrls[0]->axisY() < -200))
+      if ((dpad & DPAD_UP) || (ctrls[0]->axisY() < -200))
       {
         if (paddle1Y > 2)
           paddle1Y -= PADDLE_SPEED;
       }
-      if ((dpad & GAME_DPAD_DOWN) || (ctrls[0]->axisY() > 200))
+      if ((dpad & DPAD_DOWN) || (ctrls[0]->axisY() > 200))
       {
         if (paddle1Y < SCREEN_HEIGHT - PADDLE_HEIGHT - 2)
           paddle1Y += PADDLE_SPEED;
@@ -90,12 +90,12 @@ public:
     if (ctrls[1] && ctrls[1]->isConnected())
     {
       uint8_t dpad = ctrls[1]->dpad();
-      if ((dpad & GAME_DPAD_UP) || (ctrls[1]->axisY() < -200))
+      if ((dpad & DPAD_UP) || (ctrls[1]->axisY() < -200))
       {
         if (paddle2Y > 2)
           paddle2Y -= PADDLE_SPEED;
       }
-      if ((dpad & GAME_DPAD_DOWN) || (ctrls[1]->axisY() > 200))
+      if ((dpad & DPAD_DOWN) || (ctrls[1]->axisY() > 200))
       {
         if (paddle2Y < SCREEN_HEIGHT - PADDLE_HEIGHT - 2)
           paddle2Y += PADDLE_SPEED;

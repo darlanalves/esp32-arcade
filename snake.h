@@ -8,12 +8,11 @@ extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
-extern uint16_t getPaddleColor(int playerIndex);
 extern void drawGameBorder(Adafruit_GFX &display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
-extern const uint8_t GAME_DPAD_UP;
-extern const uint8_t GAME_DPAD_DOWN;
+extern const uint8_t DPAD_UP;
+extern const uint8_t DPAD_DOWN;
 
 namespace Snake
 {
@@ -244,12 +243,12 @@ public:
       int axisY = C->axisY();
       uint8_t dpad = C->dpad();
 
-      if ((dpad & GAME_DPAD_UP) || axisY < -200)
+      if ((dpad & DPAD_UP) || axisY < -200)
       {
         p[pi].nextDirX = 0;
         p[pi].nextDirY = -1;
       }
-      if ((dpad & GAME_DPAD_DOWN) || axisY > 200)
+      if ((dpad & DPAD_DOWN) || axisY > 200)
       {
         p[pi].nextDirX = 0;
         p[pi].nextDirY = 1;

@@ -4,10 +4,6 @@
 
 #include <Bluepad32.h>
 
-// Game-level DPAD masks (use Bluepad32 DPAD_* macros)
-static const uint8_t GAME_DPAD_UP = DPAD_UP;
-static const uint8_t GAME_DPAD_DOWN = DPAD_DOWN;
-
 class Game
 {
 public:
@@ -16,6 +12,17 @@ public:
   virtual bool update() = 0; // return false to indicate the game ended
   virtual const char *getName() = 0;
   virtual ~Game() {}
+
+  uint16_t getPaddleColor(int playerIndex)
+  {
+    if (playerIndex == 0)
+      return ST77XX_GREEN;
+
+    if (playerIndex == 1)
+      return ST77XX_BLUE;
+
+    return ST77XX_WHITE;
+  }
 };
 #endif // GAME_H
 #endif // GAME_H

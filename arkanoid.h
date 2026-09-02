@@ -8,12 +8,10 @@ extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
 extern void playWallHit();
 extern void playScoreSound();
-extern uint16_t getPaddleColor(int playerIndex);
+
 extern void drawGameBorder(Adafruit_GFX &display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
-extern const uint8_t GAME_DPAD_UP;
-extern const uint8_t GAME_DPAD_DOWN;
 
 class ArkanoidGame : public Game
 {
@@ -51,9 +49,10 @@ public:
   bool update()
   {
     // Check for return to menu (home button)
-    if (controller1 && controller1->isConnected() && controller1->miscButtons())
+    if (controller1 && controller1->isConnected() && controller1->miscBack())
       return false;
-    if (controller2 && controller2->isConnected() && controller2->miscButtons())
+
+    if (controller2 && controller2->isConnected() && controller2->miscBack())
       return false;
 
     // Paddles - horizontal movement
