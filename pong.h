@@ -18,8 +18,8 @@ class PongGame : public Game
 public:
   void setControllers(ControllerPtr p1, ControllerPtr p2) override
   {
-    ctrls[0] = p1;
-    ctrls[1] = p2;
+    controller1 = p1;
+    controller2 = p2;
   }
 
   void init() override
@@ -55,15 +55,15 @@ public:
       return false;
 
     // Player 1
-    if (ctrls[0] && ctrls[0]->isConnected())
+    if (controller1 && controller1->isConnected())
     {
-      uint8_t dpad = ctrls[0]->dpad();
-      if ((dpad & DPAD_UP) || (ctrls[0]->axisY() < -200))
+      uint8_t dpad = controller1->dpad();
+      if ((dpad & DPAD_UP) || (controller1->axisY() < -200))
       {
         if (paddle1Y > 2)
           paddle1Y -= PADDLE_SPEED;
       }
-      if ((dpad & DPAD_DOWN) || (ctrls[0]->axisY() > 200))
+      if ((dpad & DPAD_DOWN) || (controller1->axisY() > 200))
       {
         if (paddle1Y < SCREEN_HEIGHT - PADDLE_HEIGHT - 2)
           paddle1Y += PADDLE_SPEED;
@@ -72,7 +72,7 @@ public:
       uint32_t now = millis();
       if (now - lastSpeedChangeTime > 150)
       {
-        uint16_t btns = ctrls[0]->buttons();
+        uint16_t btns = controller1->buttons();
         if (btns & 0x04)
         {
           ballSpeedMultiplier = max(0.3f, ballSpeedMultiplier - 0.1f);
@@ -87,15 +87,15 @@ public:
     }
 
     // Player 2
-    if (ctrls[1] && ctrls[1]->isConnected())
+    if (controller2 && controller2->isConnected())
     {
-      uint8_t dpad = ctrls[1]->dpad();
-      if ((dpad & DPAD_UP) || (ctrls[1]->axisY() < -200))
+      uint8_t dpad = controller2->dpad();
+      if ((dpad & DPAD_UP) || (controller2->axisY() < -200))
       {
         if (paddle2Y > 2)
           paddle2Y -= PADDLE_SPEED;
       }
-      if ((dpad & DPAD_DOWN) || (ctrls[1]->axisY() > 200))
+      if ((dpad & DPAD_DOWN) || (controller2->axisY() > 200))
       {
         if (paddle2Y < SCREEN_HEIGHT - PADDLE_HEIGHT - 2)
           paddle2Y += PADDLE_SPEED;
@@ -104,7 +104,7 @@ public:
       uint32_t now = millis();
       if (now - lastSpeedChangeTime > 150)
       {
-        uint16_t btns = ctrls[1]->buttons();
+        uint16_t btns = controller2->buttons();
         if (btns & 0x04)
         {
           ballSpeedMultiplier = max(0.3f, ballSpeedMultiplier - 0.1f);
@@ -218,7 +218,8 @@ private:
   static const int PADDLE_SPEED = 4;
 
   // controllers
-  ControllerPtr ctrls[2] = {nullptr, nullptr};
+  ControllerPtr controller1 = nullptr;
+  ControllerPtr controller2 = nullptr;
 
   // paddles
   int paddle1Y;

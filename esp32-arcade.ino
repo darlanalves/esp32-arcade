@@ -41,12 +41,19 @@ void drawGameBorder(Adafruit_GFX &display)
 ControllerPtr P1;
 ControllerPtr P2;
 
+Game *selectedGame = nullptr;
 static Game *availableGames[] = {
     new PongGame(),
     new ArkanoidGame(),
     new SnakeGame(),
     new AsteroidsGame(),
 };
+
+static bool inGame = false;
+static int selectedGameIndex = 0;
+static int menuIndex = 0;
+static int lastMenuIndex = -1;
+static const int MENU_COUNT = sizeof(availableGames) / sizeof(availableGames[0]);
 
 // Handle freshly paired or connected gamepads
 void onConnectedController(ControllerPtr ctl)
@@ -66,7 +73,7 @@ void onConnectedController(ControllerPtr ctl)
     ctl->setColorLED(0, 0, 255);
   }
 
-  if (selectedGame != = nullptr)
+  if (selectedGame != nullptr)
   {
     selectedGame->setControllers(P1, P2);
   }
@@ -86,11 +93,12 @@ void onDisconnectedController(ControllerPtr ctl)
     P2 = nullptr;
     Serial.printf("Player 2 disconnected\n");
   }
-}
 
-// Menu
-int menuIndex = 0;
-const int MENU_COUNT = sizeof(availableGames) / sizeof(availableGames[0]);
+  if (selectedGame != nullptr)
+  {
+    selectedGame->setControllers(P1, P2);
+  }
+}
 
 void drawMenuItem(int itemIndex, bool selected)
 {
@@ -141,17 +149,12 @@ void setup()
   BP32.setup(&onConnectedController, &onDisconnectedController);
 }
 
-bool inGame = false;
-Game *selectedGame = nullptr;
-int selectedGameIndex = 0;
-
 void loop()
 {
   BP32.update();
 
   if (!inGame)
   {
-    static int lastMenuIndex = -1;
     static bool menuDpadHeld = false;
     bool upPressed = false;
     bool downPressed = false;
@@ -198,6 +201,7 @@ void loop()
         lastMenuIndex = menuIndex;
       }
     }
+
     menuDpadHeld = upPressed || downPressed;
 
     // start game when any non-dpad button or axis is pressed

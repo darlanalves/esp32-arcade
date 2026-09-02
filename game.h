@@ -24,5 +24,5 @@ public:
     return ST77XX_WHITE;
   }
 };
-#endif // GAME_H
+
 #endif // GAME_H
