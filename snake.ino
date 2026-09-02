@@ -185,15 +185,15 @@ namespace Snake {
         for (int i = 0; i < p[pi].length; ++i) {
           int inset = (i == 0) ? 1 : 1;
           uint16_t c = (i == 0) ? p[pi].color : ST77XX_GREEN;
-          if (!p[pi].alive) c = ST77XX_DARKGREY;
+          if (!p[pi].alive) c = tft.Color565(128, 128, 128); // gray for dead
           drawCell(p[pi].bodyX[i], p[pi].bodyY[i], inset, c);
         }
       }
     }
 
-    bool update(ControllerPtr myControllers[]) {
+    bool update() {
       // Check for return to menu via P1 home button (preserve previous behavior)
-      if (p[0].ctrl && p[0].ctrl->isConnected() && p[0].ctrl->miscButtons()) return false;
+      if (p[0].ctrl && p[0].ctrl->isConnected() && p[0].ctrl->miscBack()) return false;
 
       // Input handling for both players
       for (int pi = 0; pi < 2; ++pi) {
@@ -315,6 +315,6 @@ void Snake_init(ControllerPtr P1, ControllerPtr P2) {
   Snake::game.init(P1, P2);
 }
 
-bool Snake_update(ControllerPtr myControllers[]) {
-  return Snake::game.update(myControllers);
+bool Snake_update() {
+  return Snake::game.update();
 }
