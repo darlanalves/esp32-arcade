@@ -6,9 +6,6 @@
 #include <string.h>
 
 extern Adafruit_ST7789 tft;
-extern void playPaddleHit();
-extern void playWallHit();
-extern void playScoreSound();
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
 
@@ -64,12 +61,12 @@ public:
       if (axisX != 0 || axisY != 0)
         shipAngle = atan2(-axisY, axisX) * 180.0 / M_PI + 90;
 
-      if (controller1.y() || controller1.a())
+      if (controller1->y() || controller1->a())
         shipSpeed = min(MAX_SHIP_SPEED, shipSpeed + 0.15f);
       else
         shipSpeed *= 0.95f;
 
-      if (controller1.b() || controller1.x())
+      if (controller1->b() || controller1->x())
       {
         uint32_t now = millis();
         if (now - lastShotTime > 200)

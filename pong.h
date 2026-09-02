@@ -4,14 +4,8 @@
 #include <Bluepad32.h>
 
 extern Adafruit_ST7789 tft;
-extern void playPaddleHit();
-extern void playWallHit();
-extern void playScoreSound();
-extern void drawGameBorder(Adafruit_GFX &display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
-extern const uint8_t DPAD_UP;
-extern const uint8_t DPAD_DOWN;
 
 class PongGame : public Game
 {

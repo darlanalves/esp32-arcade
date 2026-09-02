@@ -5,11 +5,6 @@
 #include "game.h"
 
 extern Adafruit_ST7789 tft;
-extern void playPaddleHit();
-extern void playWallHit();
-extern void playScoreSound();
-
-extern void drawGameBorder(Adafruit_GFX &display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
 
@@ -40,7 +35,7 @@ public:
     lastNewRowTime = millis();
 
     tft.fillScreen(ST77XX_BLACK);
-    drawGameBorder(tft);
+    drawGameBorder();
     drawBricks();
     tft.fillRect(paddle1X, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, getPaddleColor(0));
     tft.fillRect(paddle2X, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, getPaddleColor(1));
@@ -147,6 +142,7 @@ public:
         ballYSpeed = -ballYSpeed;
         ballY = PADDLE_Y - BALL_SIZE;
         playPaddleHit();
+        controller1->setRumble(255, 100);
         lastHitBy = 0;
       }
       // Paddle 2 (right half)
@@ -155,6 +151,7 @@ public:
         ballYSpeed = -ballYSpeed;
         ballY = PADDLE_Y - BALL_SIZE;
         playPaddleHit();
+        controller2->setRumble(255, 100);
         lastHitBy = 1;
       }
     }

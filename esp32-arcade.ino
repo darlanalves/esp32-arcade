@@ -16,26 +16,9 @@
 #define TFT_BLK_PIN 33
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
-#define BUZZER_PIN 26
-
 // Screen Dimensions (Portrait 240x280 for ST7789V2)
 const int SCREEN_WIDTH = 240;
 const int SCREEN_HEIGHT = 280;
-const int PLAYFIELD_HEIGHT = SCREEN_HEIGHT - 18;
-const int PLAYFIELD_BORDER_WIDTH = 5;
-
-void drawGameBorder(Adafruit_GFX &display)
-{
-  for (int offset = 0; offset < PLAYFIELD_BORDER_WIDTH; offset++)
-  {
-    display.drawRect(
-        offset,
-        offset,
-        SCREEN_WIDTH - offset * 2,
-        PLAYFIELD_HEIGHT - offset * 2,
-        ST77XX_WHITE);
-  }
-}
 
 // Bluepad32 Global Controller Pointers (shared)
 ControllerPtr P1;

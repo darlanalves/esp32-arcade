@@ -5,14 +5,8 @@
 #include "game.h"
 
 extern Adafruit_ST7789 tft;
-extern void playPaddleHit();
-extern void playWallHit();
-extern void playScoreSound();
-extern void drawGameBorder(Adafruit_GFX &display);
 extern const int SCREEN_WIDTH;
 extern const int SCREEN_HEIGHT;
-extern const uint8_t DPAD_UP;
-extern const uint8_t DPAD_DOWN;
 
 namespace Snake
 {
@@ -198,7 +192,7 @@ public:
     spawnFood();
 
     tft.fillScreen(ST77XX_BLACK);
-    drawGameBorder(tft);
+    drawGameBorder();
     // initial draw
     drawEverything();
     drawHud();
@@ -207,7 +201,7 @@ public:
   void drawEverything()
   {
     tft.fillScreen(ST77XX_BLACK);
-    drawGameBorder(tft);
+    drawGameBorder();
     // food
     drawCell(foodX, foodY, 2, ST77XX_RED);
     // players
