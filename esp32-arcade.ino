@@ -35,6 +35,7 @@ void drawGameBorder(Adafruit_GFX& display) {
 }
 
 // Bluepad32 Global Controller Pointers (shared)
+// TODO change to P1 and P2, only two players should be allowed
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
 // Forward declarations for game modules
@@ -146,7 +147,7 @@ void setup() {
 
   // Initialize Display (ST7789V2 240x280)
   tft.init(240, 280);
-  tft.setRotation(0);  // Portrait mode for 240x280
+  tft.setRotation(90);  // Portrait mode for 240x280
   tft.fillScreen(ST77XX_BLACK);
 
   randomSeed(analogRead(0));

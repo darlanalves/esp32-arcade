@@ -15,9 +15,9 @@ extern const uint8_t GAME_DPAD_UP;
 extern const uint8_t GAME_DPAD_DOWN;
 
 namespace Pong {
-  const int PADDLE_WIDTH = 4;
-  const int PADDLE_HEIGHT = 24;
-  const int BALL_SIZE = 4;
+  const int PADDLE_WIDTH = 6;
+  const int PADDLE_HEIGHT = 30;
+  const int BALL_SIZE = 8;
   const int PADDLE_SPEED = 4;
 
   int paddle1Y;
@@ -75,7 +75,6 @@ void Pong_init(ControllerPtr myControllers[]) {
 
   Pong::resetBall();
   Pong::drawScores();
-  drawGameBorder(tft);
 
   // draw initial paddles
   tft.fillRect(10, Pong::paddle1Y, Pong::PADDLE_WIDTH, Pong::PADDLE_HEIGHT, getPaddleColor(0));
