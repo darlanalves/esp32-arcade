@@ -6,6 +6,8 @@
 #include "arkanoid.h"
 #include "snake.h"
 #include "asteroids.h"
+#include "game.h"
+#include "pong.h"
 
 // TFT control pins avoid the ESP32 boot-strapping GPIOs (0, 2, 4, 5, 12, and 15).
 #define TFT_CS 32
@@ -21,9 +23,6 @@ const int SCREEN_WIDTH = 240;
 const int SCREEN_HEIGHT = 280;
 const int PLAYFIELD_HEIGHT = SCREEN_HEIGHT - 18;
 const int PLAYFIELD_BORDER_WIDTH = 5;
-
-const uint8_t GAME_DPAD_UP = 0x01;
-const uint8_t GAME_DPAD_DOWN = 0x02;
 
 void drawGameBorder(Adafruit_GFX &display)
 {
@@ -42,69 +41,11 @@ void drawGameBorder(Adafruit_GFX &display)
 ControllerPtr P1;
 ControllerPtr P2;
 
-// Abstract Game interface used by the menu/launcher
-class Game
-{
-public:
-  virtual void setControllers(ControllerPtr p1, ControllerPtr p2) = 0;
-  virtual void init() = 0;
-  // return false to indicate the game ended and we should return to menu
-  virtual bool update() = 0;
-  virtual const char *getName() = 0;
-  virtual ~Game() {}
-};
-
-// Wrapper for Pong (uses functions in pong.ino)
-class PongWrapper : public Game {
-public:
-  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ctrls[0] = p1; ctrls[1] = p2; }
-  void init() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; Pong_init(arr); }
-  bool update() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; return Pong_update(arr); }
-  const char *getName() override { return "Pong"; }
-private:
-  ControllerPtr ctrls[2] = {nullptr, nullptr};
-};
-
-// Wrapper for Arkanoid (class in arkanoid.h)
-class ArkanoidWrapper : public Game {
-public:
-  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ark.setControllers(p1, p2); }
-  void init() override { ark.init(); }
-  bool update() override { return ark.update(); }
-  const char *getName() override { return ark.getName(); }
-private:
-  ArkanoidGame ark;
-};
-
-// Wrapper for Snake (class in snake.h)
-class SnakeWrapper : public Game {
-public:
-  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ctrls[0]=p1; ctrls[1]=p2; snake.setControllers(p1, p2); }
-  void init() override { snake.init(ctrls[0], ctrls[1]); }
-  bool update() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; return snake.update(); }
-  const char *getName() override { return snake.getName(); }
-private:
-  SnakeGame snake;
-  ControllerPtr ctrls[2] = {nullptr, nullptr};
-};
-
-// Wrapper for Asteroids (functions in asteroids.h)
-class AsteroidsWrapper : public Game {
-public:
-  void setControllers(ControllerPtr p1, ControllerPtr p2) override { ctrls[0] = p1; ctrls[1] = p2; }
-  void init() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; Asteroids_init(arr); }
-  bool update() override { ControllerPtr arr[2] = {ctrls[0], ctrls[1]}; return Asteroids_update(arr); }
-  const char *getName() override { return "Asteroids"; }
-private:
-  ControllerPtr ctrls[2] = {nullptr, nullptr};
-};
-
-// Available games
 static Game *availableGames[] = {
-    new PongWrapper(),
-    new ArkanoidWrapper(),
-    new SnakeWrapper(),
-    new AsteroidsWrapper(),
+    new PongGame(),
+    new ArkanoidGame(),
+    new SnakeGame(),
+    new AsteroidsGame(),
 };
 
 // Handle freshly paired or connected gamepads
@@ -114,15 +55,20 @@ void onConnectedController(ControllerPtr ctl)
   {
     P1 = ctl;
     Serial.printf("Player 1 connected\n");
-    setControllerLED(ctl, 0);
+    ctl->setColorLED(0, 255, 0);
     return;
   }
 
-  if (P2 == nullptr && ctl != P1)
+  if (P2 == nullptr)
   {
     P2 = ctl;
     Serial.printf("Player 2 connected\n");
-    setControllerLED(ctl, 1);
+    ctl->setColorLED(0, 0, 255);
+  }
+
+  if (selectedGame != = nullptr)
+  {
+    selectedGame->setControllers(P1, P2);
   }
 }
 
@@ -139,42 +85,6 @@ void onDisconnectedController(ControllerPtr ctl)
   {
     P2 = nullptr;
     Serial.printf("Player 2 disconnected\n");
-  }
-}
-
-// Simple sound helpers used by games
-void playPaddleHit() { tone(BUZZER_PIN, 800, 50); }
-void playWallHit() { tone(BUZZER_PIN, 500, 50); }
-void playScoreSound() { tone(BUZZER_PIN, 200, 250); }
-
-// Controller color mapping: Green, Blue, Cyan, Yellow, Red, Magenta
-uint16_t getPaddleColor(int playerIndex)
-{
-  switch (playerIndex)
-  {
-  case 0:
-    return ST77XX_GREEN; // P1
-  case 1:
-    return ST77XX_BLUE; // P2
-  default:
-    return ST77XX_WHITE;
-  }
-}
-
-void setControllerLED(ControllerPtr ctl, int playerIndex)
-{
-  if (!ctl || !ctl->isConnected())
-    return;
-
-  if (playerIndex == 0)
-  {
-    ctl->setColorLED(0, 255, 0); // Green
-    return;
-  }
-  if (playerIndex == 1)
-  {
-    ctl->setColorLED(0, 0, 255); // Blue
-    return;
   }
 }
 
@@ -222,7 +132,7 @@ void setup()
 
   // Initialize Display (ST7789V2 240x280)
   tft.init(240, 280);
-  tft.setRotation(90); // Portrait mode for 240x280
+  tft.setRotation(90); // 240x280
   tft.fillScreen(ST77XX_BLACK);
 
   randomSeed(analogRead(0));
@@ -232,7 +142,8 @@ void setup()
 }
 
 bool inGame = false;
-int selectedGame = 0;
+Game *selectedGame = nullptr;
+int selectedGameIndex = 0;
 
 void loop()
 {
@@ -249,14 +160,14 @@ void loop()
     if (P1 && P1->isConnected())
     {
       uint8_t d = P1->dpad();
-      upPressed = upPressed || (d & GAME_DPAD_UP);
-      downPressed = downPressed || (d & GAME_DPAD_DOWN);
+      upPressed = upPressed || (d & DPAD_UP);
+      downPressed = downPressed || (d & DPAD_DOWN);
     }
     if (P2 && P2->isConnected())
     {
       uint8_t d = P2->dpad();
-      upPressed = upPressed || (d & GAME_DPAD_UP);
-      downPressed = downPressed || (d & GAME_DPAD_DOWN);
+      upPressed = upPressed || (d & DPAD_UP);
+      downPressed = downPressed || (d & DPAD_DOWN);
     }
 
     if (menuIndex != lastMenuIndex)
@@ -294,25 +205,28 @@ void loop()
 
     if (startGame)
     {
-      selectedGame = menuIndex;
+      selectedGameIndex = menuIndex;
+      selectedGame = availableGames[menuIndex];
       inGame = true;
       tft.fillScreen(ST77XX_BLACK);
 
       // Configure controllers & initialize game via Game interface
-      availableGames[selectedGame]->setControllers(P1, P2);
-      availableGames[selectedGame]->init();
+      selectedGame->setControllers(P1, P2);
+      selectedGame->init();
     }
   }
   else
   {
     // Run selected game's update
-    bool continueGame = availableGames[selectedGame]->update();
+    bool continueGame = selectedGame->update();
 
     if (!continueGame)
     {
       // Return to menu
       inGame = false;
-      menuIndex = selectedGame; // Keep selection
+      menuIndex = selectedGameIndex;
+      selectedGame = nullptr;
+      lastMenuIndex = -1;
       tft.fillScreen(ST77XX_BLACK);
       drawMenu();
     }

@@ -2,6 +2,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <Bluepad32.h>
+#include "game.h"
 
 extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
@@ -31,7 +32,7 @@ namespace Snake
   const int MAX_LENGTH = 100;
 }
 
-class SnakeGame
+class SnakeGame : public Game
 {
 public:
   struct Player
@@ -41,8 +42,8 @@ public:
     int headX = 0, headY = 0;
     int dirX = 1, dirY = 0;
     int nextDirX = 1, nextDirY = 0;
-    int bodyX[MAX_LENGTH];
-    int bodyY[MAX_LENGTH];
+    int bodyX[Snake::MAX_LENGTH];
+    int bodyY[Snake::MAX_LENGTH];
     int length = 3;
     int lives = 3;
     bool alive = true;
@@ -59,15 +60,15 @@ public:
 
   void drawCell(int cellX, int cellY, int inset, uint16_t color)
   {
-    int px = GAME_AREA_LEFT + cellX * GRID_SIZE + inset;
-    int py = GAME_AREA_TOP + cellY * GRID_SIZE + inset;
-    tft.fillRect(px, py, GRID_SIZE - inset * 2, GRID_SIZE - inset * 2, color);
+    int px = Snake::GAME_AREA_LEFT + cellX * Snake::GRID_SIZE + inset;
+    int py = Snake::GAME_AREA_TOP + cellY * Snake::GRID_SIZE + inset;
+    tft.fillRect(px, py, Snake::GRID_SIZE - inset * 2, Snake::GRID_SIZE - inset * 2, color);
   }
 
   void drawHud()
   {
-    int hudY = SCREEN_HEIGHT - HUD_HEIGHT - BORDER;
-    tft.fillRect(0, hudY, SCREEN_WIDTH, HUD_HEIGHT, ST77XX_BLACK);
+    int hudY = SCREEN_HEIGHT - Snake::HUD_HEIGHT - Snake::BORDER;
+    tft.fillRect(0, hudY, SCREEN_WIDTH, Snake::HUD_HEIGHT, ST77XX_BLACK);
     tft.drawLine(0, hudY, SCREEN_WIDTH, hudY, ST77XX_WHITE);
     tft.setTextSize(1);
 
@@ -101,8 +102,8 @@ public:
     while (!ok && attempts < 1000)
     {
       attempts++;
-      foodX = random(GRID_WIDTH);
-      foodY = random(GRID_HEIGHT);
+      foodX = random(Snake::GRID_WIDTH);
+      foodY = random(Snake::GRID_HEIGHT);
       ok = true;
       // don't spawn on any player's body
       for (int pi = 0; pi < 2 && ok; ++pi)
@@ -162,13 +163,13 @@ public:
     p[pi].dirY = 0;
     if (pi == 0)
     {
-      p[pi].headX = GRID_WIDTH / 4;
-      p[pi].headY = GRID_HEIGHT / 2;
+      p[pi].headX = Snake::GRID_WIDTH / 4;
+      p[pi].headY = Snake::GRID_HEIGHT / 2;
     }
     else
     {
-      p[pi].headX = (GRID_WIDTH * 3) / 4;
-      p[pi].headY = GRID_HEIGHT / 2;
+      p[pi].headX = (Snake::GRID_WIDTH * 3) / 4;
+      p[pi].headY = Snake::GRID_HEIGHT / 2;
     }
     for (int i = 0; i < p[pi].length; ++i)
     {
@@ -180,10 +181,9 @@ public:
       spawnFood();
   }
 
-  void init(ControllerPtr P1, ControllerPtr P2)
+  void init()
   {
-    p[0].ctrl = P1;
-    p[1].ctrl = P2;
+    // Controllers are provided via setControllers(); don't overwrite them here
     p[0].color = getPaddleColor(0);
     p[1].color = getPaddleColor(1);
     p[0].lives = 3;
@@ -219,7 +219,7 @@ public:
         int inset = (i == 0) ? 1 : 1;
         uint16_t c = (i == 0) ? p[pi].color : ST77XX_GREEN;
         if (!p[pi].alive)
-          c = tft.Color565(128, 128, 128); // gray for dead
+          c = tft.color565(128, 128, 128); // gray for dead
         drawCell(p[pi].bodyX[i], p[pi].bodyY[i], inset, c);
       }
     }
@@ -318,7 +318,7 @@ public:
         p[pi].headY += p[pi].dirY;
 
         // Wall collision
-        if (p[pi].headX < 0 || p[pi].headX >= GRID_WIDTH || p[pi].headY < 0 || p[pi].headY >= GRID_HEIGHT)
+        if (p[pi].headX < 0 || p[pi].headX >= Snake::GRID_WIDTH || p[pi].headY < 0 || p[pi].headY >= Snake::GRID_HEIGHT)
         {
           playWallHit();
           p[pi].lives--;
@@ -397,8 +397,8 @@ public:
     p[1].ctrl = p2;
   }
 
-  char *getName()
+  const char *getName()
   {
-    return (char *)"Snake";
+    return "Snake";
   }
 };

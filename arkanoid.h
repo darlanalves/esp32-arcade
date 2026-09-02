@@ -2,6 +2,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <Bluepad32.h>
+#include "game.h"
 
 extern Adafruit_ST7789 tft;
 extern void playPaddleHit();
@@ -14,7 +15,7 @@ extern const int SCREEN_HEIGHT;
 extern const uint8_t GAME_DPAD_UP;
 extern const uint8_t GAME_DPAD_DOWN;
 
-class ArkanoidGame
+class ArkanoidGame : public Game
 {
 public:
   // Public API
@@ -25,6 +26,9 @@ public:
     paddle2X = SCREEN_WIDTH / 2;
     prevPaddle1X = paddle1X;
     prevPaddle2X = paddle2X;
+
+    // compute runtime dimensions
+    PADDLE_Y = SCREEN_HEIGHT - PADDLE_HEIGHT - 2;
 
     ballX = SCREEN_WIDTH / 2;
     ballY = SCREEN_HEIGHT / 2;
@@ -263,9 +267,9 @@ public:
     controller2 = p2;
   }
 
-  char *getName()
+  const char *getName()
   {
-    return (char *)"Arkanoid";
+    return "Arkanoid";
   }
 
 private:
@@ -273,7 +277,7 @@ private:
   static const int PADDLE_WIDTH = 32;
   static const int PADDLE_HEIGHT = 6;
   static const int PADDLE_SPEED = 4;
-  static const int PADDLE_Y = SCREEN_HEIGHT - PADDLE_HEIGHT - 2;
+  int PADDLE_Y = 0; // computed in init() because SCREEN_HEIGHT is not a compile-time constant
 
   // Ball
   static const int BALL_SIZE = 4;

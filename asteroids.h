@@ -15,39 +15,236 @@ extern const int SCREEN_HEIGHT;
 extern const uint8_t GAME_DPAD_UP;
 extern const uint8_t GAME_DPAD_DOWN;
 
-namespace Asteroids {
-  // Game constants
-  const int CENTER_X = SCREEN_WIDTH / 2;
-  const int CENTER_Y = (SCREEN_HEIGHT - 20) / 2;
-  const int PLAYFIELD_HEIGHT = 262;
-  const int TILE_HEIGHT = 32;
-  const int MAX_ASTEROIDS = 20;
-  const int MAX_BULLETS = 10;
+class AsteroidsGame : public Game
+{
+public:
+  void setControllers(ControllerPtr p1, ControllerPtr p2) override
+  {
+    ctrls[0] = p1;
+    ctrls[1] = p2;
+  }
 
-  // Player ship
+  void init() override
+  {
+    centerX = SCREEN_WIDTH / 2;
+    centerY = (SCREEN_HEIGHT - 20) / 2;
+    playfieldHeight = SCREEN_HEIGHT - 20;
+
+    shipX = centerX;
+    shipY = centerY;
+    shipVelX = 0;
+    shipVelY = 0;
+    shipAngle = 0;
+    shipSpeed = 0;
+
+    score = 0;
+    lives = 3;
+    speedMultiplier = 1.0f;
+
+    for (int i = 0; i < MAX_BULLETS; i++)
+      bullets[i].active = false;
+    spawnAsteroids(3);
+
+    tft.fillScreen(ST77XX_BLACK);
+    drawAsteroidsFrame();
+  }
+
+  bool update() override
+  {
+    // Check for return to menu
+    if (ctrls[0] && ctrls[0]->isConnected() && ctrls[0]->miscButtons())
+      return false;
+
+    if (ctrls[0] && ctrls[0]->isConnected())
+    {
+      int axisX = ctrls[0]->axisX();
+      int axisY = ctrls[0]->axisY();
+      uint16_t btns = ctrls[0]->buttons();
+
+      if (axisX != 0 || axisY != 0)
+        shipAngle = atan2(-axisY, axisX) * 180.0 / M_PI + 90;
+
+      if (btns & 0x01 || btns & 0x02)
+        shipSpeed = min(MAX_SHIP_SPEED, shipSpeed + 0.15f);
+      else
+        shipSpeed *= 0.95f;
+
+      if ((btns & 0x04) || (btns & 0x08))
+      {
+        uint32_t now = millis();
+        if (now - lastShotTime > 200)
+        {
+          for (int i = 0; i < MAX_BULLETS; i++)
+          {
+            if (!bullets[i].active)
+            {
+              float rad = shipAngle * M_PI / 180.0;
+              bullets[i].x = shipX + cos(rad) * SHIP_SIZE;
+              bullets[i].y = shipY - sin(rad) * SHIP_SIZE;
+              bullets[i].velX = cos(rad) * 4.0f;
+              bullets[i].velY = -sin(rad) * 4.0f;
+              bullets[i].active = true;
+              playPaddleHit();
+              lastShotTime = now;
+              break;
+            }
+          }
+        }
+      }
+
+      uint32_t now = millis();
+      if (now - lastSpeedChangeTime > 150)
+      {
+        if (btns & 0x10)
+        {
+          speedMultiplier = max(0.3f, speedMultiplier - 0.1f);
+          lastSpeedChangeTime = now;
+        }
+        if (btns & 0x20)
+        {
+          speedMultiplier = min(2.0f, speedMultiplier + 0.1f);
+          lastSpeedChangeTime = now;
+        }
+      }
+    }
+
+    // Update physics
+    float rad = shipAngle * M_PI / 180.0;
+    shipVelX = cos(rad) * shipSpeed;
+    shipVelY = -sin(rad) * shipSpeed;
+    shipX += shipVelX;
+    shipY += shipVelY;
+
+    if (shipX < 0)
+      shipX = SCREEN_WIDTH;
+    if (shipX > SCREEN_WIDTH)
+      shipX = 0;
+    if (shipY < 0)
+      shipY = SCREEN_HEIGHT - 20;
+    if (shipY > SCREEN_HEIGHT - 20)
+      shipY = 0;
+
+    for (int i = 0; i < MAX_BULLETS; i++)
+    {
+      if (bullets[i].active)
+      {
+        bullets[i].x += bullets[i].velX;
+        bullets[i].y += bullets[i].velY;
+        if (bullets[i].x < 0 || bullets[i].x > SCREEN_WIDTH || bullets[i].y < 0 || bullets[i].y > SCREEN_HEIGHT - 20)
+          bullets[i].active = false;
+      }
+    }
+
+    for (int i = 0; i < asteroidCount; i++)
+    {
+      if (asteroids[i].active)
+      {
+        asteroids[i].x += asteroids[i].velX;
+        asteroids[i].y += asteroids[i].velY;
+        if (asteroids[i].x < 0)
+          asteroids[i].x = SCREEN_WIDTH;
+        if (asteroids[i].x > SCREEN_WIDTH)
+          asteroids[i].x = 0;
+        if (asteroids[i].y < 0)
+          asteroids[i].y = SCREEN_HEIGHT - 20;
+        if (asteroids[i].y > SCREEN_HEIGHT - 20)
+          asteroids[i].y = 0;
+
+        for (int j = 0; j < MAX_BULLETS; j++)
+        {
+          if (bullets[j].active)
+          {
+            int radius = 10 - asteroids[i].size * 3;
+            float dx = bullets[j].x - asteroids[i].x;
+            float dy = bullets[j].y - asteroids[i].y;
+            if (dx * dx + dy * dy < radius * radius)
+            {
+              bullets[j].active = false;
+              asteroids[i].active = false;
+              score += (3 - asteroids[i].size) * 10;
+              playScoreSound();
+              if (asteroids[i].size < 2 && asteroidCount < MAX_ASTEROIDS - 1)
+              {
+                for (int k = 0; k < 2; k++)
+                {
+                  asteroids[asteroidCount].x = asteroids[i].x;
+                  asteroids[asteroidCount].y = asteroids[i].y;
+                  asteroids[asteroidCount].velX = (random(-100, 100) / 100.0f);
+                  asteroids[asteroidCount].velY = (random(-100, 100) / 100.0f);
+                  asteroids[asteroidCount].size = asteroids[i].size + 1;
+                  asteroids[asteroidCount].active = true;
+                  asteroidCount++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    bool allDestroyed = true;
+    for (int i = 0; i < asteroidCount; i++)
+      if (asteroids[i].active)
+      {
+        allDestroyed = false;
+        break;
+      }
+    if (allDestroyed)
+      spawnAsteroids(3 + score / 100);
+
+    drawAsteroidsFrame();
+
+    // HUD
+    tft.fillRect(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, 18, ST77XX_BLACK);
+    tft.drawLine(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, SCREEN_HEIGHT - 18, ST77XX_WHITE);
+    tft.setCursor(5, SCREEN_HEIGHT - 15);
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setTextSize(1);
+    tft.print("Score:");
+    tft.print(score);
+    tft.setCursor(SCREEN_WIDTH - 45, SCREEN_HEIGHT - 15);
+    tft.print("Lives:");
+    tft.print(lives);
+
+    return true;
+  }
+
+  const char *getName() override { return "Asteroids"; }
+
+private:
+  // controllers
+  ControllerPtr ctrls[2] = {nullptr, nullptr};
+
+  // constants
+  static const int TILE_HEIGHT = 32;
+  static const int MAX_ASTEROIDS = 20;
+  static const int MAX_BULLETS = 10;
+  static constexpr float MAX_SHIP_SPEED = 3.0f;
+  static constexpr float SHIP_SIZE = 8.0f;
+
+  // layout (computed in init)
+  int centerX;
+  int centerY;
+  int playfieldHeight;
+
+  // ship
   float shipX, shipY;
   float shipVelX, shipVelY;
-  float shipAngle;  // In degrees
-  float shipSpeed = 0;
-  const float MAX_SHIP_SPEED = 3.0f;
-  const float SHIP_SIZE = 8;
+  float shipAngle;
+  float shipSpeed;
 
-  // Bullets
-  struct Bullet {
-    float x, y;
-    float velX, velY;
+  struct Bullet
+  {
+    float x, y, velX, velY;
     bool active;
-  };
-  Bullet bullets[MAX_BULLETS];
+  } bullets[MAX_BULLETS];
 
-  // Asteroids
-  struct Asteroid {
-    float x, y;
-    float velX, velY;
-    int size;  // 0 = large, 1 = medium, 2 = small
+  struct Asteroid
+  {
+    float x, y, velX, velY;
+    int size;
     bool active;
-  };
-  Asteroid asteroids[MAX_ASTEROIDS];
+  } asteroids[MAX_ASTEROIDS];
   int asteroidCount = 0;
 
   int score = 0;
@@ -58,38 +255,44 @@ namespace Asteroids {
   uint16_t frameBuffer[TILE_HEIGHT][240];
   int renderTop = 0;
 
-  void drawPixel(int x, int y, uint16_t color) {
-    if (x >= 0 && x < SCREEN_WIDTH && y >= renderTop && y < renderTop + TILE_HEIGHT) {
+  void drawPixel(int x, int y, uint16_t color)
+  {
+    if (x >= 0 && x < SCREEN_WIDTH && y >= renderTop && y < renderTop + TILE_HEIGHT)
       frameBuffer[y - renderTop][x] = color;
-    }
   }
 
-  void drawLine(int x0, int y0, int x1, int y1, uint16_t color) {
+  void drawLine(int x0, int y0, int x1, int y1, uint16_t color)
+  {
     int deltaX = abs(x1 - x0);
     int stepX = x0 < x1 ? 1 : -1;
     int deltaY = -abs(y1 - y0);
     int stepY = y0 < y1 ? 1 : -1;
     int error = deltaX + deltaY;
-
-    while (true) {
+    while (true)
+    {
       drawPixel(x0, y0, color);
-      if (x0 == x1 && y0 == y1) break;
+      if (x0 == x1 && y0 == y1)
+        break;
       int doubleError = error * 2;
-      if (doubleError >= deltaY) {
+      if (doubleError >= deltaY)
+      {
         error += deltaY;
         x0 += stepX;
       }
-      if (doubleError <= deltaX) {
+      if (doubleError <= deltaX)
+      {
         error += deltaX;
         y0 += stepY;
       }
     }
   }
 
-  void drawBorder() {
-    for (int offset = 0; offset < 3; offset++) {
+  void drawBorder()
+  {
+    for (int offset = 0; offset < 3; offset++)
+    {
       int right = SCREEN_WIDTH - 1 - offset;
-      int bottom = PLAYFIELD_HEIGHT - 1 - offset;
+      int bottom = playfieldHeight - 1 - offset;
       drawLine(offset, offset, right, offset, ST77XX_WHITE);
       drawLine(right, offset, right, bottom, ST77XX_WHITE);
       drawLine(right, bottom, offset, bottom, ST77XX_WHITE);
@@ -97,27 +300,27 @@ namespace Asteroids {
     }
   }
 
-  void drawShip() {
+  void drawShip()
+  {
     float rad = shipAngle * M_PI / 180.0;
     float cos_a = cos(rad);
     float sin_a = sin(rad);
-
-    // Ship points (triangle)
     int x1 = shipX + cos_a * SHIP_SIZE;
     int y1 = shipY - sin_a * SHIP_SIZE;
     int x2 = shipX - cos_a * (SHIP_SIZE * 0.7) - sin_a * (SHIP_SIZE * 0.7);
     int y2 = shipY + sin_a * (SHIP_SIZE * 0.7) - cos_a * (SHIP_SIZE * 0.7);
     int x3 = shipX - cos_a * (SHIP_SIZE * 0.7) + sin_a * (SHIP_SIZE * 0.7);
     int y3 = shipY + sin_a * (SHIP_SIZE * 0.7) + cos_a * (SHIP_SIZE * 0.7);
-
     drawLine(x1, y1, x2, y2, getPaddleColor(0));
     drawLine(x2, y2, x3, y3, getPaddleColor(0));
     drawLine(x3, y3, x1, y1, getPaddleColor(0));
   }
 
-  void drawAsteroid(float x, float y, int size) {
+  void drawAsteroidShape(float x, float y, int size)
+  {
     int radius = 10 - size * 3;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++)
+    {
       float a1 = (float)i * M_PI / 4.0;
       float a2 = (float)(i + 1) * M_PI / 4.0;
       int x1 = x + cos(a1) * radius;
@@ -128,221 +331,42 @@ namespace Asteroids {
     }
   }
 
-  void spawnAsteroids(int count) {
+  void spawnAsteroids(int count)
+  {
     asteroidCount = 0;
-    for (int i = 0; i < count && asteroidCount < MAX_ASTEROIDS; i++) {
+    for (int i = 0; i < count && asteroidCount < MAX_ASTEROIDS; i++)
+    {
       asteroids[asteroidCount].x = random(20, SCREEN_WIDTH - 20);
       asteroids[asteroidCount].y = random(20, SCREEN_HEIGHT - 40);
       asteroids[asteroidCount].velX = (random(-100, 100) / 100.0f) * speedMultiplier;
       asteroids[asteroidCount].velY = (random(-100, 100) / 100.0f) * speedMultiplier;
-      asteroids[asteroidCount].size = 0;  // Large
+      asteroids[asteroidCount].size = 0;
       asteroids[asteroidCount].active = true;
       asteroidCount++;
     }
   }
-}
 
-void drawAsteroidsFrame() {
-  for (int renderTop = 0; renderTop < Asteroids::PLAYFIELD_HEIGHT; renderTop += Asteroids::TILE_HEIGHT) {
-    int tileHeight = min(Asteroids::TILE_HEIGHT, Asteroids::PLAYFIELD_HEIGHT - renderTop);
-    Asteroids::renderTop = renderTop;
-    memset(Asteroids::frameBuffer, 0, sizeof(Asteroids::frameBuffer));
-    Asteroids::drawBorder();
-    Asteroids::drawShip();
-
-    for (int i = 0; i < Asteroids::MAX_BULLETS; i++) {
-      if (Asteroids::bullets[i].active) {
-        Asteroids::drawPixel(Asteroids::bullets[i].x, Asteroids::bullets[i].y, ST77XX_YELLOW);
-        Asteroids::drawPixel(Asteroids::bullets[i].x + 1, Asteroids::bullets[i].y, ST77XX_YELLOW);
-      }
-    }
-    for (int i = 0; i < Asteroids::asteroidCount; i++) {
-      if (Asteroids::asteroids[i].active) {
-        Asteroids::drawAsteroid(Asteroids::asteroids[i].x, Asteroids::asteroids[i].y,
-                                Asteroids::asteroids[i].size);
-      }
-    }
-
-    tft.drawRGBBitmap(0, renderTop, &Asteroids::frameBuffer[0][0], SCREEN_WIDTH, tileHeight);
-  }
-}
-
-void Asteroids_init(ControllerPtr myControllers[]) {
-  Asteroids::shipX = Asteroids::CENTER_X;
-  Asteroids::shipY = Asteroids::CENTER_Y;
-  Asteroids::shipVelX = 0;
-  Asteroids::shipVelY = 0;
-  Asteroids::shipAngle = 0;
-  Asteroids::shipSpeed = 0;
-
-  Asteroids::score = 0;
-  Asteroids::lives = 3;
-  Asteroids::speedMultiplier = 1.0f;
-
-  for (int i = 0; i < Asteroids::MAX_BULLETS; i++) {
-    Asteroids::bullets[i].active = false;
-  }
-
-  Asteroids::spawnAsteroids(3);
-
-  tft.fillScreen(ST77XX_BLACK);
-  drawAsteroidsFrame();
-}
-
-bool Asteroids_update(ControllerPtr myControllers[]) {
-  // Check for return to menu (home button)
-  if (myControllers[0] && myControllers[0]->isConnected() && myControllers[0]->miscButtons()) {
-    return false;
-  }
-
-  // Input handling
-  if (myControllers[0] && myControllers[0]->isConnected()) {
-    int axisX = myControllers[0]->axisX();
-    int axisY = myControllers[0]->axisY();
-    uint16_t btns = myControllers[0]->buttons();
-
-    // Rotation with analog stick
-    if (axisX != 0 || axisY != 0) {
-      Asteroids::shipAngle = atan2(-axisY, axisX) * 180.0 / M_PI + 90;
-    }
-
-    // Accelerate with button A or X
-    if (btns & 0x01 || btns & 0x02) {  // A (0x01) or X (0x02)
-      Asteroids::shipSpeed = min(Asteroids::MAX_SHIP_SPEED, Asteroids::shipSpeed + 0.15f);
-    } else {
-      Asteroids::shipSpeed *= 0.95f;  // Friction
-    }
-
-    // Shoot with button B or Y
-    if ((btns & 0x04) || (btns & 0x08)) {  // B (0x04) or Y (0x08)
-      uint32_t now = millis();
-      if (now - Asteroids::lastShotTime > 200) {
-        // Find inactive bullet
-        for (int i = 0; i < Asteroids::MAX_BULLETS; i++) {
-          if (!Asteroids::bullets[i].active) {
-            float rad = Asteroids::shipAngle * M_PI / 180.0;
-            Asteroids::bullets[i].x = Asteroids::shipX + cos(rad) * Asteroids::SHIP_SIZE;
-            Asteroids::bullets[i].y = Asteroids::shipY - sin(rad) * Asteroids::SHIP_SIZE;
-            Asteroids::bullets[i].velX = cos(rad) * 4.0f;
-            Asteroids::bullets[i].velY = -sin(rad) * 4.0f;
-            Asteroids::bullets[i].active = true;
-            playPaddleHit();
-            Asteroids::lastShotTime = now;
-            break;
-          }
+  void drawAsteroidsFrame()
+  {
+    for (int rt = 0; rt < playfieldHeight; rt += TILE_HEIGHT)
+    {
+      int tileHeight = min(TILE_HEIGHT, playfieldHeight - rt);
+      renderTop = rt;
+      memset(frameBuffer, 0, sizeof(frameBuffer));
+      drawBorder();
+      drawShip();
+      for (int i = 0; i < MAX_BULLETS; i++)
+      {
+        if (bullets[i].active)
+        {
+          drawPixel(bullets[i].x, bullets[i].y, ST77XX_YELLOW);
+          drawPixel(bullets[i].x + 1, bullets[i].y, ST77XX_YELLOW);
         }
       }
-    }
-
-    // Speed control with L1/R1
-    uint32_t now = millis();
-    if (now - Asteroids::lastSpeedChangeTime > 150) {
-      if (btns & 0x10) {  // L2 button
-        Asteroids::speedMultiplier = max(0.3f, Asteroids::speedMultiplier - 0.1f);
-        Asteroids::lastSpeedChangeTime = now;
-      }
-      if (btns & 0x20) {  // R2 button
-        Asteroids::speedMultiplier = min(2.0f, Asteroids::speedMultiplier + 0.1f);
-        Asteroids::lastSpeedChangeTime = now;
-      }
+      for (int i = 0; i < asteroidCount; i++)
+        if (asteroids[i].active)
+          drawAsteroidShape(asteroids[i].x, asteroids[i].y, asteroids[i].size);
+      tft.drawRGBBitmap(0, rt, &frameBuffer[0][0], SCREEN_WIDTH, tileHeight);
     }
   }
-
-  // Update ship position
-  float rad = Asteroids::shipAngle * M_PI / 180.0;
-  Asteroids::shipVelX = cos(rad) * Asteroids::shipSpeed;
-  Asteroids::shipVelY = -sin(rad) * Asteroids::shipSpeed;
-  Asteroids::shipX += Asteroids::shipVelX;
-  Asteroids::shipY += Asteroids::shipVelY;
-
-  // Wrap around screen
-  if (Asteroids::shipX < 0) Asteroids::shipX = SCREEN_WIDTH;
-  if (Asteroids::shipX > SCREEN_WIDTH) Asteroids::shipX = 0;
-  if (Asteroids::shipY < 0) Asteroids::shipY = SCREEN_HEIGHT - 20;
-  if (Asteroids::shipY > SCREEN_HEIGHT - 20) Asteroids::shipY = 0;
-
-  // Update bullets
-  for (int i = 0; i < Asteroids::MAX_BULLETS; i++) {
-    if (Asteroids::bullets[i].active) {
-      Asteroids::bullets[i].x += Asteroids::bullets[i].velX;
-      Asteroids::bullets[i].y += Asteroids::bullets[i].velY;
-
-      if (Asteroids::bullets[i].x < 0 || Asteroids::bullets[i].x > SCREEN_WIDTH ||
-          Asteroids::bullets[i].y < 0 || Asteroids::bullets[i].y > SCREEN_HEIGHT - 20) {
-        Asteroids::bullets[i].active = false;
-      }
-    }
-  }
-
-  // Update asteroids
-  for (int i = 0; i < Asteroids::asteroidCount; i++) {
-    if (Asteroids::asteroids[i].active) {
-      Asteroids::asteroids[i].x += Asteroids::asteroids[i].velX;
-      Asteroids::asteroids[i].y += Asteroids::asteroids[i].velY;
-
-      // Wrap around
-      if (Asteroids::asteroids[i].x < 0) Asteroids::asteroids[i].x = SCREEN_WIDTH;
-      if (Asteroids::asteroids[i].x > SCREEN_WIDTH) Asteroids::asteroids[i].x = 0;
-      if (Asteroids::asteroids[i].y < 0) Asteroids::asteroids[i].y = SCREEN_HEIGHT - 20;
-      if (Asteroids::asteroids[i].y > SCREEN_HEIGHT - 20) Asteroids::asteroids[i].y = 0;
-
-      // Check bullet collisions
-      for (int j = 0; j < Asteroids::MAX_BULLETS; j++) {
-        if (Asteroids::bullets[j].active) {
-          int radius = 10 - Asteroids::asteroids[i].size * 3;
-          float dx = Asteroids::bullets[j].x - Asteroids::asteroids[i].x;
-          float dy = Asteroids::bullets[j].y - Asteroids::asteroids[i].y;
-          if (dx*dx + dy*dy < radius*radius) {
-            Asteroids::bullets[j].active = false;
-            Asteroids::asteroids[i].active = false;
-            Asteroids::score += (3 - Asteroids::asteroids[i].size) * 10;
-            playScoreSound();
-
-            // Spawn smaller asteroids
-            if (Asteroids::asteroids[i].size < 2 && Asteroids::asteroidCount < Asteroids::MAX_ASTEROIDS - 1) {
-              for (int k = 0; k < 2; k++) {
-                Asteroids::asteroids[Asteroids::asteroidCount].x = Asteroids::asteroids[i].x;
-                Asteroids::asteroids[Asteroids::asteroidCount].y = Asteroids::asteroids[i].y;
-                Asteroids::asteroids[Asteroids::asteroidCount].velX = (random(-100, 100) / 100.0f);
-                Asteroids::asteroids[Asteroids::asteroidCount].velY = (random(-100, 100) / 100.0f);
-                Asteroids::asteroids[Asteroids::asteroidCount].size = Asteroids::asteroids[i].size + 1;
-                Asteroids::asteroids[Asteroids::asteroidCount].active = true;
-                Asteroids::asteroidCount++;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Check if all asteroids destroyed
-  bool allDestroyed = true;
-  for (int i = 0; i < Asteroids::asteroidCount; i++) {
-    if (Asteroids::asteroids[i].active) {
-      allDestroyed = false;
-      break;
-    }
-  }
-  if (allDestroyed) {
-    Asteroids::spawnAsteroids(3 + Asteroids::score / 100);
-  }
-
-  drawAsteroidsFrame();
-
-  // Display score, lives, and speed
-  tft.fillRect(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, 18, ST77XX_BLACK);
-  tft.drawLine(0, SCREEN_HEIGHT - 18, SCREEN_WIDTH, SCREEN_HEIGHT - 18, ST77XX_WHITE);
-
-  tft.setCursor(5, SCREEN_HEIGHT - 15);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setTextSize(1);
-  tft.print("Score:");
-  tft.print(Asteroids::score);
-
-  tft.setCursor(SCREEN_WIDTH - 45, SCREEN_HEIGHT - 15);
-  tft.print("Lives:");
-  tft.print(Asteroids::lives);
-
-  return true;
-}
+};
